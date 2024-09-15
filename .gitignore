@@ -1,0 +1,4 @@
+/vendor
+/.idea
+/includes/credentials.json
+/includes/config.php
