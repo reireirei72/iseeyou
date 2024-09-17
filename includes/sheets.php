@@ -59,6 +59,8 @@ class Sheets {
             19 => ['type' => 'Сбор с МЗ',                                   'points' => 2],
             20 => ['type' => 'Перенос с мели',                              'points' => floatval($extra)],
             21 => ['type' => 'Аннулирование дозора (Дозор на травах)',      'points' => -floatval($hidden)],
+            22 => ['type' => 'Проверка отчётов',                            'points' => 4],
+            23 => ['type' => 'Обновление архива памяток',                   'points' => 2],
         ];
         return $legend[$num] ?? 0;
     }
@@ -325,7 +327,7 @@ class Sheets {
             "data" => $data["data"],
         ];
     }
-    
+
     public static function write($info, $force_return_array = false) {
         $sheetId = Sheets::getSheetId(self::$spreadsheet_id, self::$spreadsheet_stats_name);
         if ($sheetId == -1) {

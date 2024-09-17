@@ -519,9 +519,48 @@ class Peck {
             return Peck::flowerQuest($object) ?: "";
         } elseif (preg_match('/^вернул(ся|ась),? *\+(\d+)/iu', $text) && $hasReplies) {
             return Peck::addCurrentWatch($object) ?: "";
+        } elseif (preg_match('/^проверила? отч[её]ты/iu', $text)) {
+            return Peck::taskCheckReports($object) ?: "";
+        } elseif (preg_match('/^обновила? архив памяток/iu', $text)) {
+            return Peck::taskUpdateArchive($object) ?: "";
         }
         return "";
     }
+
+    private static function taskCheckReports($object) {
+        $cat = getCats($object['from_id'])[$object['from_id']] ?? [];
+        if (empty($cat)) return "";
+
+        $report_date = new DateTime();
+        $report_date->setTimestamp($object['date']);
+
+        $data = [[
+            'num' => 22,
+            'cat' => $cat["id"],
+            'date' => $report_date,
+            'msg_id' => $object['peer_id'] . "_" . $object['conversation_message_id']
+        ]];
+        $points = Sheets::write($data);
+        return "Проверка отчётов засчитана, $cat[name].\n+" . declination($points, ['балл', 'балла', 'баллов']);
+    }
+
+    private static function taskUpdateArchive($object) {
+        $cat = getCats($object['from_id'])[$object['from_id']] ?? [];
+        if (empty($cat)) return "";
+
+        $report_date = new DateTime();
+        $report_date->setTimestamp($object['date']);
+
+        $data = [[
+            'num' => 23,
+            'cat' => $cat["id"],
+            'date' => $report_date,
+            'msg_id' => $object['peer_id'] . "_" . $object['conversation_message_id']
+        ]];
+        $points = Sheets::write($data);
+        return "Обновление архива памяток засчитано, $cat[name].\n+" . declination($points, ['балл', 'балла', 'баллов']);
+    }
+
     private static function flowerQuest($object) {
         if (!checkAccess($object['from_id'], "Наблюдатель")) {
             return "";
