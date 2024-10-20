@@ -216,16 +216,11 @@ function send_message($peer_id, $object) {
                 $date = date('Y-m-d 00:00:00');
                 $result = DB::q("SELECT users.id as 'id', name FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE asked_to_tag_at >= '$date'");
                 $users = [];
-                $hasMe = false;
                 while (list($id, $name) = DB::fetch($result)) {
-                    if ($id != $me) {
-                        $users[] = "[id$id|$name]";
-                    } else {
-                        $hasMe = true;
-                    }
+                    $users[] = "[id$id|$name]";
                 }
                 if (count($users) < 1) {
-                    $sticker_id = $hasMe ? 86536 : 80969;
+                    $sticker_id = 80969;
                 } else {
                     $message = join(', ', $users) . ", партия зовёт!";
                     $disable_mentions = false;
@@ -236,9 +231,14 @@ function send_message($peer_id, $object) {
             $result = DB::q("SELECT users.id AS 'id', name FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE has_permit ORDER BY RAND()");
             $users = [];
             $check = [];
+            $hasMe = false;
             while (list($id, $name) = DB::fetch($result)) {
-                $users[$id] = "[id$id|$name]";
-                $check[] = $id;
+                if ($id != $me) {
+                    $users[$id] = "[id$id|$name]";
+                    $check[] = $id;
+                } else {
+                    $hasMe = true;
+                }
             }
             if (count($users) < 1) {
                 $sticker_id = 80969;
@@ -250,7 +250,7 @@ function send_message($peer_id, $object) {
                     }
                 }
                 if (count($users) < 1) {
-                    $sticker_id = [72826, 80972, 81769, 51128][rand(0, 3)];
+                    $sticker_id = $hasMe ? 86536 : [72826, 80972, 81769, 51128][rand(0, 3)];
                 } else {
                     if ($isRandom) {
                         $single = array_rand($users);
@@ -373,7 +373,7 @@ function send_message($peer_id, $object) {
                 } else {
                     $user = getUserInfo($who);
                     $message = "[id{$who}|$user[first_name] $user[last_name]]"
-                        . "\nИмя: $info[name]";
+                                . "\nИмя: $info[name]";
                 }
             } else {
                 $text = trim($command . " " . $text);
@@ -485,7 +485,7 @@ function send_message($peer_id, $object) {
                             if (count($exists) > 0) {
                                 $his = $user["sex"] == 1 ? "её" : "его";
                                 $message .= "\nК $his варовскому ID=$cat_id привязан" . (count($exists) > 1 ? "ы" : "")
-                                    . " " . mapUsers($exists);
+                                . " " . mapUsers($exists);
                             }
                         }
                     }
