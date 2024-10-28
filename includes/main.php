@@ -748,7 +748,7 @@ class Peck {
     }
     private static function mossFill($object) {
         if (!checkAccess($object['from_id'], "Доверенный")) {
-            return "no access";
+            return "";
         }
         $fwd = $object["fwd_messages"];
         if (count($fwd) < 1 && count($object["reply_message"]) > 0) {
@@ -762,7 +762,7 @@ class Peck {
             }
         }
         $cats = getCats($users);
-        if (empty($cats)) return "empty cats";
+        if (empty($cats)) return 79400;
         $point_distribution = [];
         $ex = explode('.', str_replace([',', "\n", " "], '.', trim($object['text'])));
         foreach ($ex as $key => $entry) {
@@ -776,7 +776,8 @@ class Peck {
         $data_cats = [];
         foreach ($users as $key => $user_id) {
             if (!isset($cats[$user_id])) {
-                return 72471;
+                $user = getUserInfo($user_id, "gen");
+                return "$user[first_name] $user[last_name] нет в отряде...";
             }
             $data_cats[] = [
                 "user_id" => $user_id,
