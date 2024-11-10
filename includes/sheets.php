@@ -250,7 +250,7 @@ class Sheets {
                     $null_data = $row;
                 }
 
-                $id = $row[6];
+                $id = $row[6] ?? "";
                 if ($id == $unique) {
                     if (!$act_cell) {
                         $act_cell = $key;
@@ -327,7 +327,7 @@ class Sheets {
             "data" => $data["data"],
         ];
     }
-
+    
     public static function write($info, $force_return_array = false) {
         $sheetId = Sheets::getSheetId(self::$spreadsheet_id, self::$spreadsheet_stats_name);
         if ($sheetId == -1) {
