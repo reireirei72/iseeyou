@@ -665,8 +665,34 @@ function send_message($peer_id, $object) {
                     $sticker_id = 83411;
                 } else {
                     $level = intval($text);
+                    $leader_level = ACCESS_LEVELS_TYPES["Глава"];
+
                     $his_level = DB::getVal("SELECT access_level FROM cats WHERE id=$cat_id", -1);
-                    if (!$isMom && ($self || !checkAccess($me, $level) || !checkAccess($me, $his_level))) {
+                    if ($level >= $leader_level || $self) {
+                        if ($isMom || checkAccess($me, "Глава")) {
+                            if ($isMom || $level <= $leader_level) {
+                                if ($self) {
+                                    $leaderCount = DB::getVal("SELECT COUNT(id) FROM cats WHERE access_level=$leader_level");
+                                    if ($leaderCount > 1) {
+                                        DB::q("UPDATE cats SET access_level=$level WHERE id=$cat_id");
+                                        $level_str = array_flip(ACCESS_LEVELS_TYPES)[$level] ?? "???";
+                                        $message = "Теперь у вас доступ $level ($level_str).";
+                                    } else {
+                                        $message = "Снимать с себя доступ главы запрещено, если больше никого с таким доступом нет.";
+                                    }
+                                } else {
+                                    DB::q("UPDATE cats SET access_level=$level WHERE id=$cat_id");
+                                    $level_str = array_flip(ACCESS_LEVELS_TYPES)[$level] ?? "???";
+                                    $message = "Теперь у котика $cat_info[name] доступ $level ($level_str).";
+                                }
+                            } else {
+                                $message = "Доступа выше главы для смертных не существует.";
+                            }
+                        } else {
+                            $message = $self ? "Менять себе доступ" : "Менять доступ на главу отряда";
+                            $message .= " может только глава отряда.";
+                        }
+                    } elseif (!$isMom && (!checkAccess($me, $level) || !checkAccess($me, $his_level))) {
                         $sticker_id = 83411;
                     } else {
                         if ($cat_info["access_level"] == $level) {
