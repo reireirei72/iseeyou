@@ -1094,7 +1094,7 @@ class Peck {
         $reply = Peck::getReply($object);
         $attachments = $reply["attachments"];
         if (count($attachments) != 1) {
-            return "";
+            return "Ошибка: прикреплённых к сообщению файлов должно быть 2";
         }
         $photo = $attachments[0]["photo"];
         if (!isset($photo)) {
