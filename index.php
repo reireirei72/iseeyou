@@ -387,7 +387,7 @@ function send_message($peer_id, $object) {
                     $cat_id = DB::getVal("SELECT id FROM cats WHERE LOWER(name)='" . DB::escape(mb_strtolower($text)) . "'", -1);
                     $cond = "cat_id=$cat_id";
                 }
-                $info_all = DB::q("SELECT users.id AS 'user_id', cat_id, name, norm, access_level, has_medal, has_permit FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE $cond");
+                $info_all = DB::q("SELECT users.id AS 'user_id', bonking_count, cat_id, name, norm, access_level, has_medal, has_permit FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE $cond");
                 if (DB::numRows($info_all) < 1) {
                     $sticker_id = 79400;
                     $info = null;
@@ -413,10 +413,13 @@ function send_message($peer_id, $object) {
                 $level = $info['access_level'];
                 $level_str = array_flip(ACCESS_LEVELS_TYPES)[$level] ?? "???";
                 $norm_type = ["ИС", "1", "2"][$info['norm']] ?? "не выбрана";
+                $bonking_flavor = ["Ударили по голове", "Уронили на пол", "Избили за гаражами", "Забуллили"];
+                $bonking_flavor = $bonking_flavor[rand(0, count($bonking_flavor) - 1)];
                 $message .= "\nДоступ: $info[access_level] ($level_str)"
                     . "\nВариант нормы: $norm_type"
                     . "\nМедаль: " . ($info['has_medal'] ? "есть" : "нет")
-                    . "\nРазрешение: " . ($info['has_permit'] ? "есть" : "нет");
+                    . "\nРазрешение: " . ($info['has_permit'] ? "есть" : "нет")
+                    . ($info["bonking_count"] > 0 ? ("\n$bonking_flavor: " . declination($info["bonking_count"], ['раз', 'раза', 'раз'])) : "");
             }
         } elseif ($command == "список" && in_array(trim($text), ["отряда", "нормы"])) {
             $text = trim($text);
@@ -807,7 +810,7 @@ function send_message($peer_id, $object) {
             } else {
                 $message = "Советую тебе не закрывать глаза, пока спишь.";
             }
-            $random_id = intval(time() / 10);
+            DB::q("UPDATE users SET bonk_count = bonk_count + 1 WHERE id = $me");
         } elseif ($command == "настройка") {
             if (!$isMom && !checkAccess($me, "Глава")) {
                 $sticker_id = 83411;
