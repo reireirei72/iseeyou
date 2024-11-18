@@ -387,7 +387,7 @@ function send_message($peer_id, $object) {
                     $cat_id = DB::getVal("SELECT id FROM cats WHERE LOWER(name)='" . DB::escape(mb_strtolower($text)) . "'", -1);
                     $cond = "cat_id=$cat_id";
                 }
-                $info_all = DB::q("SELECT users.id AS 'user_id', bonking_count, cat_id, name, norm, access_level, has_medal, has_permit FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE $cond");
+                $info_all = DB::q("SELECT users.id AS 'user_id', bonk_count, cat_id, name, norm, access_level, has_medal, has_permit FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE $cond");
                 if (DB::numRows($info_all) < 1) {
                     $sticker_id = 79400;
                     $info = null;
@@ -419,7 +419,7 @@ function send_message($peer_id, $object) {
                     . "\nВариант нормы: $norm_type"
                     . "\nМедаль: " . ($info['has_medal'] ? "есть" : "нет")
                     . "\nРазрешение: " . ($info['has_permit'] ? "есть" : "нет")
-                    . ($info["bonking_count"] > 0 ? ("\n$bonking_flavor: " . declination($info["bonking_count"], ['раз', 'раза', 'раз'])) : "");
+                    . ($info["bonk_count"] > 0 ? ("\n$bonking_flavor: " . declination($info["bonk_count"], ['раз', 'раза', 'раз'])) : "");
             }
         } elseif ($command == "список" && in_array(trim($text), ["отряда", "нормы"])) {
             $text = trim($text);
