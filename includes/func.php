@@ -1,4 +1,5 @@
-<?
+<?php
+require_once __DIR__ . '/config.php';
 
 function mb_ucfirst($string) {
     $firstChar = mb_substr($string, 0, 1);
@@ -47,23 +48,6 @@ function getCats($user_ids) {
     return $data;
 }
 
-//function getCatName($string, $user_db = 0) { // deprecated
-//    $name = "";
-//    $string = mb_strtolower(trim($string));
-//    $string = mb_ereg_replace('[^а-яА-ЯЁё\s]+', '', $string);
-//    $arr = explode(' ', $string);
-//    foreach($arr as $key => $word) {
-//        $arr[$key] = mb_ucfirst(trim($word));
-//    }
-//    if (count($arr) <= 2) {
-//        $name = trim(join(' ', $arr));
-//    }
-//    if ($name == "" || $user_db) {
-//        return DB::getVal("SELECT name FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE users.id=$user_db", $name);
-//    }
-//    return $name;
-//}
-
 function checkAccess($id, $level) {
     return DB::getVal("SELECT access_level FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE users.id=$id", -1) >= (ACCESS_LEVELS_TYPES[$level] ?? $level);
 }
@@ -111,4 +95,26 @@ function getTimePeriodFromString($string, &$from, &$to) {
         $from = DateTime::createFromFormat('d.m.Y H:i:s', $date . " 00:00:00");
         $to = DateTime::createFromFormat('d.m.Y H:i:s', $date . " 23:59:59");
     }
+}
+
+function api($method, $params) {
+    $params['access_token'] = VK_API_ACCESS_TOKEN;
+    $params['v']            = VK_API_VERSION;
+    $query                  = http_build_query($params);
+    $url                    = VK_API_ENDPOINT . $method . '?' . $query;
+    $curl                   = curl_init($url);
+    curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+    $json  = curl_exec($curl);
+    $error = curl_error($curl);
+    if ($error) {
+        var_dump($error);
+        throw new Exception("Failed {$method} request");
+    }
+    curl_close($curl);
+    $response = json_decode($json, true);
+    if (!$response || !isset($response['response'])) {
+        var_dump($json);
+        throw new Exception("Invalid response for {$method} request");
+    }
+    return $response['response'];
 }

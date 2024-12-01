@@ -74,8 +74,9 @@ function send_message($peer_id, $object) {
                 . "> удали (ВК VK_ID / @таг / ID / Имя)\n"
                 . "> дозорные\n"
                 . "> норма (1 / 2 / ИС)\n"
-                . "> тагни на перенос/не тагай\n"
+                . "> тагни на перенос/не тагай на перенос\n"
                 . "> тагни выдавателей\n"
+                . "> уведомление (вид деятельности) (включить/выключить)\n"
                 . "> настройка (ключ настройки)"
             ;
             $random_id = intval(time() / 10);
@@ -154,6 +155,14 @@ function send_message($peer_id, $object) {
                     . "Пример: $bot_name тагни выдавателей\n"
                     . "Пример: $bot_name тагни выдавателя\n"
                     . "Тагает всех (или одного случайного) выдавателя (кого-то с разрешением), который сейчас в сети.";
+            } elseif ($text == "уведомление") {
+                $message = "> уведомление (вид деятельности) включить/выключить\n"
+                    . "Пример: $bot_name уведомление перенос включить\n"
+                    . "Пример: $bot_name уведомление дозор в ПЦ выключить\n"
+                    . "Включает или выключает постоянные уведомления для какой-то деятельности (достаточно включить"
+                    . " один раз, и бот будет всегда вас тагать на эту деятельность). Слово 'включить' можно не писать"
+                    . " - тогда опция просто переключится (если было выключено, включится, и наоборот).\n"
+                    . " Чтобы увидеть список всех доступных уведомлений, просто напишите '$bot_name уведомление'.";
             } elseif ($text == "настройка") {
                 $message = "> настройка (ключ настройки) ('установить')\n"
                     . "Пример: $bot_name настройка message_12_even\n"
@@ -191,6 +200,45 @@ function send_message($peer_id, $object) {
                     . "• 10 баллов за доп. задания\n\n"
                     . "Доп.задания в списке заданий блога с 3 по 14, 16\n"
                     . "3 дозора на локациях с травами НЕ входят в эту часть. От 4 и более — входят.";
+            }
+        } elseif ($command == "уведомление") {
+            if (empty(trim($text))) {
+                $message = "Доступные виды уведомлений:\n"
+                    . "• Дозор в ПЦ (таг по окончании дозора);\n"
+                    . "• Дозор на ГБ (таг по окончании дозора);\n"
+                    . "• Перенос (таг в начале каждого переноса).";
+            } else {
+                $optionStr = getCommand($text, false, true);
+                $newValue = $optionStr == "включить";
+                if (!$newValue && $optionStr != "выключить") { // это не "включить" и не "выключить"
+                    $text = trim($text) . " " . trim($optionStr);
+                    $newValue = null;
+                }
+                $type = trim($text);
+                $field = "";
+                $fieldName = "";
+                if ($type == "дозор в пц") {
+                    $field = "maindoz";
+                    $fieldName = "по окончании дозора в ПЦ";
+                } elseif ($type == "дозор на гб") {
+                    $field = "gbdoz";
+                    $fieldName = "по окончании дозора на ГБ";
+                } elseif ($type == "перенос") {
+                    $field = "carryover";
+                    $fieldName = "на начало переноса ресурсов";
+                } else {
+                    $message = "Чё-т у вас странное уведомление...";
+                }
+                if ($field) {
+                    if (is_null($newValue)) {
+                        $newValue = !(DB::getVal("SELECT {$field}_tag_enabled FROM users WHERE id=$me", 0));
+                    }
+                    DB::q("UPDATE users SET {$field}_tag_enabled=$newValue WHERE id=$me");
+                    $message = "Уведомление $fieldName успешно " . ($newValue ? "включено" : "выключено") . "!";
+                    if ($newValue) {
+                        // todo: Записать в БД если прямо сейчас дозор идет
+                    }
+                }
             }
         } elseif ($command . " " . $text == "тагни на перенос") {
             $date = date('Y-m-d H:i:s');
@@ -387,7 +435,7 @@ function send_message($peer_id, $object) {
                     $cat_id = DB::getVal("SELECT id FROM cats WHERE LOWER(name)='" . DB::escape(mb_strtolower($text)) . "'", -1);
                     $cond = "cat_id=$cat_id";
                 }
-                $info_all = DB::q("SELECT users.id AS 'user_id', bonk_count, cat_id, name, norm, access_level, has_medal, has_permit FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE $cond");
+                $info_all = DB::q("SELECT users.id AS 'user_id', bonk_count, cat_id, name, norm, access_level, has_medal, has_permit, maindoz_tag_enabled, gbdoz_tag_enabled, carryover_tag_enabled FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE $cond");
                 if (DB::numRows($info_all) < 1) {
                     $sticker_id = 79400;
                     $info = null;
@@ -419,6 +467,9 @@ function send_message($peer_id, $object) {
                     . "\nВариант нормы: $norm_type"
                     . "\nМедаль: " . ($info['has_medal'] ? "есть" : "нет")
                     . "\nРазрешение: " . ($info['has_permit'] ? "есть" : "нет")
+                    . "\nТагать в конце дозора в ПЦ: " . ($info['maindoz_tag_enabled'] ? "да" : "нет")
+                    . "\nТагать в конце дозора на ГБ: " . ($info['gbdoz_tag_enabled'] ? "да" : "нет")
+                    . "\nТагать всегда на перенос: " . ($info['carryover_tag_enabled'] ? "да" : "нет")
                     . ($info["bonk_count"] > 0 ? ("\n$bonking_flavor: " . declination($info["bonk_count"], ['раз', 'раза', 'раз'])) : "");
             }
         } elseif ($command == "список" && in_array(trim($text), ["отряда", "нормы"])) {
@@ -946,33 +997,17 @@ function getUserInfo($user_id, $case = "nom") { // Возвращает объе
     }
 }
 
-function api($method, $params) {
-    $params['access_token'] = VK_API_ACCESS_TOKEN;
-    $params['v']            = VK_API_VERSION;
-    $query                  = http_build_query($params);
-    $url                    = VK_API_ENDPOINT . $method . '?' . $query;
-    $curl                   = curl_init($url);
-    curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
-    $json  = curl_exec($curl);
-    $error = curl_error($curl);
-    if ($error) {
-        var_dump($error);
-        throw new Exception("Failed {$method} request");
-    }
-    curl_close($curl);
-    $response = json_decode($json, true);
-    if (!$response || !isset($response['response'])) {
-        var_dump($json);
-        throw new Exception("Invalid response for {$method} request");
-    }
-    return $response['response'];
-}
-
-function getCommand(&$text, $allowCommas = false) {
+function getCommand(&$text, $allowCommas = false, $reverse = false) {
     $text = trim($text);
-    $space = mb_strpos($text, ' ') ?: null;
-    $command = mb_substr(mb_strtolower($text), 0, $space);
-    $text = (($space === null) ? "" : mb_substr($text, $space + 1));
+    if ($reverse) {
+        $space = mb_strrpos($text, ' ') ?: null;
+        $command = mb_substr(mb_strtolower($text), $space + 1);
+        $text = (($space === null) ? "" : mb_substr($text, 0, $space + 1));
+    } else {
+        $space = mb_strpos($text, ' ') ?: null;
+        $command = mb_substr(mb_strtolower($text), 0, $space);
+        $text = (($space === null) ? "" : mb_substr($text, $space + 1));
+    }
     return mb_ereg_replace('[^а-яА-ЯЁё\w' . ($allowCommas ? '\.' : '') . '\d\-\[\]\|]+', '', trim($command));
 }
 
