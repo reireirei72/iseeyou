@@ -371,7 +371,7 @@ class Peck {
             ];
             Sheets::modifyRow($check["act_cell"], $data, 4);
             // TODO: Раз уж записываем все дозоры в БД, то и проверять их наличие можно через БД...
-            DB::q("UPDATE doz_active SET ends_at=ends_at + INTERVAL $num MINUTE WHERE peer_id=$object[peer_id] AND msg_id=$object[conversation_message_id]");
+            DB::q("UPDATE doz_active SET ends_at=ends_at + INTERVAL $num MINUTE WHERE peer_id=$object[peer_id] AND msg_id=$reply[conversation_message_id]");
             return "Отлучка засчитана, $cat[name].\n"
                 . "Дозор закончится в " . $endtime->format('H:i');
         }

@@ -8,6 +8,7 @@ require_once __DIR__ . '/www/u151626.test-handyhost.ru/includes/config.php';
 (VK_API_ACCESS_TOKEN == $argv[1]) or exit;
 
 require_once __DIR__ . '/www/u151626.test-handyhost.ru/includes/db.php';
+require_once __DIR__ . '/www/u151626.test-handyhost.ru/includes/func.php';
 
 $hour = intval(date('G'));
 $day = intval(date('j'));
