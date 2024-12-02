@@ -233,11 +233,9 @@ function send_message($peer_id, $object) {
                     if (is_null($newValue)) {
                         $newValue = !(DB::getVal("SELECT {$field}_tag_enabled FROM users WHERE id=$me", 0));
                     }
+                    $newValue = $newValue ? 1 : 0;
                     DB::q("UPDATE users SET {$field}_tag_enabled=$newValue WHERE id=$me");
                     $message = "Уведомление $fieldName успешно " . ($newValue ? "включено" : "выключено") . "!";
-                    if ($newValue) {
-                        // todo: Записать в БД если прямо сейчас дозор идет
-                    }
                 }
             }
         } elseif ($command . " " . $text == "тагни на перенос") {
@@ -262,7 +260,7 @@ function send_message($peer_id, $object) {
                 $sticker_id = 83411;
             } else {
                 $date = date('Y-m-d 00:00:00');
-                $result = DB::q("SELECT users.id as 'id', name FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE asked_to_tag_at >= '$date'");
+                $result = DB::q("SELECT users.id as 'id', name FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE (asked_to_tag_at >= '$date' OR carryover_tag_enabled > 0)");
                 $users = [];
                 while (list($id, $name) = DB::fetch($result)) {
                     $users[] = "[id$id|$name]";

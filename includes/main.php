@@ -370,6 +370,8 @@ class Peck {
                 $total . "",
             ];
             Sheets::modifyRow($check["act_cell"], $data, 4);
+            // TODO: Раз уж записываем все дозоры в БД, то и проверять их наличие можно через БД...
+            DB::q("UPDATE doz_active SET ends_at=ends_at + INTERVAL $num MINUTE WHERE peer_id=$object[peer_id] AND msg_id=$object[conversation_message_id]");
             return "Отлучка засчитана, $cat[name].\n"
                 . "Дозор закончится в " . $endtime->format('H:i');
         }
@@ -390,11 +392,12 @@ class Peck {
                         return 83444;
                 }
             }
+            DB::q("DELETE FROM doz_active WHERE peer_id=$object[peer_id] AND msg_id=$reply[conversation_message_id]");
             return "[ " . $response["data"][2] . " ] отменено";
         }
         return "";
     }
-    public static function getTemplates($type) { // todo
+    public static function getTemplates($type) {
         if ($type == "") {
             return "Возможные виды деятельности:\n"
                 . "дозор\n"
@@ -1039,7 +1042,6 @@ class Peck {
             return "Слишком поздно, текущее время: $current. Начать можно не ранее $max.";
         }
 
-        // todo: проверка на дозоры, которые уже идут
         $past_doz = Sheets::getInfoBy([
             0 => $cat["id"],
             2 => [
@@ -1069,7 +1071,6 @@ class Peck {
             }
         }
 
-
         $data = [[
             'num' => $num,
             'cat' => $cat["id"],
@@ -1078,6 +1079,10 @@ class Peck {
             'msg_id' => $object['peer_id'] . "_" . $object['conversation_message_id']
         ]];
         $points = Sheets::write($data);
+        $ends_at = $act_date->format("Y-m-d H:i:s");
+        $doz_time = ($type == "на ГБ") ? Peck::$gb_doz_min : Peck::$doz_min;
+        $db_type = ($type == "на ГБ") ? "gb" : "main";
+        DB::q("INSERT INTO doz_active SET user_id=$object[from_id], peer_id=$object[peer_id], msg_id=$object[conversation_message_id], ends_at='$ends_at' + INTERVAL $doz_time MINUTE, type='$db_type'");
         return "Дозор $type засчитан, $cat[name]. \n"
             . ($hasCustomTime ? "" : ("Начало дозора: " . $act_date->format('H:i') . "\n"))
             . "+" . declination($points, ['балл', 'балла', 'баллов']);
