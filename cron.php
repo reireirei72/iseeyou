@@ -19,12 +19,20 @@ $message = DB::getVal("SELECT `$column` FROM settings", "");
 ($message != "") or exit("Неизвестный текст настройки $column!");
 
 $users = [];
-$result = DB::q("SELECT users.id AS 'id', name FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE access_level = 6");
-while (list($id, $name) = DB::fetch($result)) {
-    $users[] = "[id$id|$name]";
+$should_tag = [];
+$result = DB::q("SELECT users.id AS 'id', name, access_level = 6 AS 'is_gatherer' FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE access_level = 6 OR herbdoz_tag_enabled");
+while (list($id, $name, $isGatherer) = DB::fetch($result)) {
+    if (!!$isGatherer) {
+        $users[] = "[id$id|$name]";
+    } else {
+        $should_tag[] = "[id$id|$name]";
+    }
 }
 if (!empty($users)) {
     $message .= "\n" . join(", ", $users) . ", работать!";
+}
+if (!empty($should_tag)) {
+    $message .= "\n" . join(", ", $should_tag) . ", просыпаемся!";
 }
 try {
     api('messages.send', array(

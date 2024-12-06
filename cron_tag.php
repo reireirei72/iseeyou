@@ -39,7 +39,7 @@ if (!empty($users_names)) {
     $message = join(", ", $users_names) . ", дозор всё, можно спать";
     try {
         api('messages.send', array(
-            'peer_id' => PEER_TEST,
+            'peer_id' => PEER_WORK,
             'message' => $message,
             'disable_mentions' => false,
             'random_id' => time() . ""

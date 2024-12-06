@@ -206,6 +206,7 @@ function send_message($peer_id, $object) {
                 $message = "Доступные виды уведомлений:\n"
                     . "• Дозор в ПЦ (таг по окончании дозора);\n"
                     . "• Дозор на ГБ (таг по окончании дозора);\n"
+                    . "• Дозор на травах (таг при начале сбора);\n"
                     . "• Перенос (таг в начале каждого переноса).";
             } else {
                 $optionStr = getCommand($text, false, true);
@@ -223,6 +224,9 @@ function send_message($peer_id, $object) {
                 } elseif ($type == "дозор на гб") {
                     $field = "gbdoz";
                     $fieldName = "по окончании дозора на ГБ";
+                } elseif ($type == "дозор на травах") {
+                    $field = "herbdoz";
+                    $fieldName = "на начало сбора дозора на травах";
                 } elseif ($type == "перенос") {
                     $field = "carryover";
                     $fieldName = "на начало переноса ресурсов";
