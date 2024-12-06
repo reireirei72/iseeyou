@@ -437,7 +437,7 @@ function send_message($peer_id, $object) {
                     $cat_id = DB::getVal("SELECT id FROM cats WHERE LOWER(name)='" . DB::escape(mb_strtolower($text)) . "'", -1);
                     $cond = "cat_id=$cat_id";
                 }
-                $info_all = DB::q("SELECT users.id AS 'user_id', bonk_count, cat_id, name, norm, access_level, has_medal, has_permit, maindoz_tag_enabled, gbdoz_tag_enabled, carryover_tag_enabled FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE $cond");
+                $info_all = DB::q("SELECT users.id AS 'user_id', bonk_count, cat_id, name, norm, access_level, has_medal, has_permit, maindoz_tag_enabled, gbdoz_tag_enabled, herbdoz_tag_enabled, carryover_tag_enabled FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE $cond");
                 if (DB::numRows($info_all) < 1) {
                     $sticker_id = 79400;
                     $info = null;
@@ -471,6 +471,7 @@ function send_message($peer_id, $object) {
                     . "\nРазрешение: " . ($info['has_permit'] ? "есть" : "нет")
                     . "\nТагать в конце дозора в ПЦ: " . ($info['maindoz_tag_enabled'] ? "да" : "нет")
                     . "\nТагать в конце дозора на ГБ: " . ($info['gbdoz_tag_enabled'] ? "да" : "нет")
+                    . "\nТагать перед дозорами на травах: " . ($info['herbdoz_tag_enabled'] ? "да" : "нет")
                     . "\nТагать всегда на перенос: " . ($info['carryover_tag_enabled'] ? "да" : "нет")
                     . ($info["bonk_count"] > 0 ? ("\n$bonking_flavor: " . declination($info["bonk_count"], ['раз', 'раза', 'раз'])) : "");
             }
