@@ -215,7 +215,7 @@ function send_message($peer_id, $object) {
                     $text = trim($text) . " " . trim($optionStr);
                     $newValue = null;
                 }
-                $type = trim($text);
+                $type = mb_strtolower(trim($text));
                 $field = "";
                 $fieldName = "";
                 if ($type == "дозор в пц") {
@@ -1004,8 +1004,8 @@ function getCommand(&$text, $allowCommas = false, $reverse = false) {
     $text = trim($text);
     if ($reverse) {
         $space = mb_strrpos($text, ' ') ?: null;
-        $command = mb_substr(mb_strtolower($text), $space + 1);
-        $text = (($space === null) ? "" : mb_substr($text, 0, $space + 1));
+        $command = mb_substr(mb_strtolower($text), $space ?? -1 + 1);
+        $text = (($space === null) ? "" : mb_substr($text, 0, $space ?? -1 + 1));
     } else {
         $space = mb_strpos($text, ' ') ?: null;
         $command = mb_substr(mb_strtolower($text), 0, $space);
