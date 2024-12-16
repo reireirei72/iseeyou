@@ -392,7 +392,12 @@ class Peck {
                         return 83444;
                 }
             }
+            $type = $response["data"][2] ?? "";
             DB::q("DELETE FROM doz_active WHERE peer_id=$object[peer_id] AND msg_id=$reply[conversation_message_id]");
+
+            if ($type == "Чистка от грязи") {
+                Sheets::remove($unique, 1);
+            }
             return "[ " . $response["data"][2] . " ] отменено";
         }
         return "";
@@ -414,7 +419,9 @@ class Peck {
                 . "поручение на мышей\n"
                 . "обход\n"
                 . "мыши\n"
-                . "выдача трав / выдача костоправов\n"
+                . "выдача трав\n"
+                . "выдача костоправов\n"
+                . "чистка от грязи\n"
                 . "квест\n"
                 ;
         }
@@ -474,12 +481,15 @@ class Peck {
         } elseif (preg_match('/^мыши/iu', $type)) {
             return "> Поймал(а) мышей\n"
                 . "К сообщению необходимо прикладывать скриншот, на котором видно пойманных мышей";
-        } elseif (preg_match('/^выдач[аи] (травы?|костоправов|трав ?\/ ?костоправов)/iu', $type)) {
+        } elseif (preg_match('/^(выдач[аи] (травы?|костоправов|трав ?\/ ?костоправов)|чистка от грязи)/iu', $type)) {
             return "> Выдал(а) траву/травы\n"
                 . "> Имя подопечного (ID), поднял камень: Имя\n"
                 . "ИЛИ\n"
                 . "> Выдал(а) костоправ(ы)\n"
                 . "> Имя подопечного (ID), количество костоправов\n"
+                . "ИЛИ\n"
+                . "> Почистил(а) от грязи\n"
+                . "> Имя подопечного (ID), количество мха\n"
                 . "Доступно только для тех, кто с разрешением. Перенос строки обязателен";
         } elseif (preg_match('/^квест/iu', $type)) {
             return "> Выполнил(а) квест на ОС\n"
@@ -516,7 +526,7 @@ class Peck {
             return Peck::task($object) ?: "";
         } elseif (preg_match('/^поймала? мышей/iu', $text)) {
             return Peck::mice($object) ?: "";
-        } elseif (preg_match('/^выдала? (трав[ыу]|костоправы?)/iu', $text)) {
+        } elseif (preg_match('/^(выдала? (трав[ыу]|костоправы?)|почистила? от грязи)/iu', $text)) {
             return Peck::heal($object) ?: "";
         } elseif (preg_match('/^выполнила? квест на ос/iu', $text)) {
             return Peck::flowerQuest($object) ?: "";
@@ -529,7 +539,6 @@ class Peck {
         }
         return "";
     }
-
     private static function taskCheckReports($object) {
         $cat = getCats($object['from_id'])[$object['from_id']] ?? [];
         if (empty($cat)) return "";
@@ -588,9 +597,10 @@ class Peck {
         if (!$hasPermit) {
             return "";
         }
-        $ex = explode("\n", $object['text']);
+        $ex = explode("\n", str_replace([","], "\n", $object['text']));
         $line = $ex[0] ?? "";
         $healee = $ex[1] ?? "";
+        $count = $ex[2] ?? "";
         $healee = trim(explode(",", $healee)[0]);
         preg_match('/^([А-Яа-яЁё ]+)[(\[\s]*\d/iu', $healee, $matches);
         $healee = $matches[1] ?? "";
@@ -598,12 +608,16 @@ class Peck {
         $healee = formatCatName($healee);
         if ($healee == "") return "";
 
-        preg_match('/^(выдала? (трав[ыу]|костоправы?)) *,? *(.*)/iu', $line, $matches);
+        preg_match('/^(выдала? (трав[ыу]|костоправы?)|почистила? от грязи) *,? *(.*)/iu', $line, $matches);
         $num = 16;
-        $type_s = "трав";
-        if (preg_match('/^костоправы?/iu', $matches[2])) {
+        $type_s = "Выдача трав";
+        if (preg_match('/^выдала? костоправы?/iu', $line)) {
             $num = 15;
-            $type_s = "костоправа";
+            $type_s = "Выдача костоправа";
+        } elseif (preg_match('/^почистила? от грязи/iu', $line)) {
+            $num = 24;
+            $type_s = "Чистка от грязи";
+            $count = (intval(preg_replace('/[^\d]/', '', $count)) * -1) . "";
         }
 
         $cat = getCats($object['from_id'])[$object['from_id']] ?? [];
@@ -619,10 +633,19 @@ class Peck {
             'hidden' => $hidden,
             'extra' => $healee,
             'date' => $report_date,
-            'msg_id' => $object['peer_id'] . "_" . $object['conversation_message_id']
+            'msg_id' => $object['peer_id'] . "_" . $object['conversation_message_id'],
         ]];
         $points = Sheets::write($data);
-        return "Выдача $type_s засчитана, $cat[name].\n+" . declination($points, ['балл', 'балла', 'баллов']);
+        if ($num == 24 && $count) {
+            $report_date->setTime(0, 0, 0);
+            $data = [
+                'date' => $report_date,
+                'count' => $count,
+                'msg_id' => $object['peer_id'] . "_" . $object['conversation_message_id'],
+            ];
+            Sheets::writeFlowerStat($data); // TODO: Дописать отмену
+        }
+        return "$type_s засчитана, $cat[name].\n+" . declination($points, ['балл', 'балла', 'баллов']);
     }
     private static function mice($object) {
         $cat = getCats($object['from_id'])[$object['from_id']] ?? [];

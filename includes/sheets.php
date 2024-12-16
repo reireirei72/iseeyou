@@ -4,7 +4,9 @@ require_once __DIR__ . '/config.php';
 
 class Sheets {
     private static $spreadsheet_id = SPREADSHEET_ID;
+    private static $flowers_spreadsheet_id = FLOWERS_SPREADSHEET_ID;
     private static $spreadsheet_stats_name = SPREADSHEET_STATS_NAME;
+    private static $flowers_spreadsheet_stats_name = FLOWERS_SPREADSHEET_STATS_NAME;
 
     private static function getService() {
         $client = new \Google_Client();
@@ -61,6 +63,7 @@ class Sheets {
             21 => ['type' => 'Аннулирование дозора (Дозор на травах)',      'points' => -floatval($hidden)],
             22 => ['type' => 'Проверка отчётов',                            'points' => 4],
             23 => ['type' => 'Обновление архива памяток',                   'points' => 2],
+            24 => ['type' => 'Чистка от грязи',                             'points' => ($hidden ? 1 : 0)],
         ];
         return $legend[$num] ?? 0;
     }
@@ -230,12 +233,17 @@ class Sheets {
         return array_pop($array);
     }
 
-    private static function findByUnique($unique, $service = null) {
+    private static function findByUnique($unique, $table = 0, $service = null) {
         if (!isset($service)) {
             $service = Sheets::getService();
         }
-        $range = self::$spreadsheet_stats_name . "!A:G";
-        $response = $service->spreadsheets_values->get(self::$spreadsheet_id, $range);
+        if ($table === 0) {
+            $range = self::$spreadsheet_stats_name . "!A:G";
+            $response = $service->spreadsheets_values->get(self::$spreadsheet_id, $range);
+        } else {
+            $range = self::$flowers_spreadsheet_stats_name . "!A:C";
+            $response = $service->spreadsheets_values->get(self::$flowers_spreadsheet_id, $range);
+        }
         $values = $response->getValues();
         $act_null_cell = 0;
         $act_cell = 0;
@@ -250,7 +258,7 @@ class Sheets {
                     $null_data = $row;
                 }
 
-                $id = $row[6] ?? "";
+                $id = end($row);
                 if ($id == $unique) {
                     if (!$act_cell) {
                         $act_cell = $key;
@@ -275,7 +283,7 @@ class Sheets {
     // Проверяет, существует ли запись с таким ID, и не является ли она аннулированной
     public static function check($unique) {
         $service = Sheets::getService();
-        $data = Sheets::findByUnique($unique, $service);
+        $data = Sheets::findByUnique($unique, 0, $service);
 
         return [
             "data" => $data["data"],
@@ -284,9 +292,9 @@ class Sheets {
         ];
     }
 
-    public static function remove($unique) {
+    public static function remove($unique, $table = 0) {
         $service = Sheets::getService();
-        $data = Sheets::findByUnique($unique, $service);
+        $data = Sheets::findByUnique($unique, $table, $service);
 
         if ($data["act_cell"] == 0) {
             return [
@@ -300,7 +308,11 @@ class Sheets {
                 "data" => 2
             ];
         }
-        $sheetId = Sheets::getSheetId(self::$spreadsheet_id, self::$spreadsheet_stats_name, $service);
+        if ($table === 0) {
+            $sheetId = Sheets::getSheetId(self::$spreadsheet_id, self::$spreadsheet_stats_name, $service);
+        } else {
+            $sheetId = Sheets::getSheetId(self::$flowers_spreadsheet_id, self::$flowers_spreadsheet_stats_name, $service);
+        }
         $request = new Google_Service_Sheets_BatchUpdateSpreadsheetRequest([
             'requests' => [
                 new Google_Service_Sheets_Request([
@@ -317,7 +329,11 @@ class Sheets {
         ]);
 
         try {
-            $service->spreadsheets->batchUpdate(self::$spreadsheet_id, $request);
+            if ($table === 0) {
+                $service->spreadsheets->batchUpdate(self::$spreadsheet_id, $request);
+            } else {
+                $service->spreadsheets->batchUpdate(self::$flowers_spreadsheet_id, $request);
+            }
         } catch (Exception $e) {
             exit($e->getMessage());
         }
@@ -327,7 +343,76 @@ class Sheets {
             "data" => $data["data"],
         ];
     }
-    
+    public static function writeFlowerStat($info) {
+        $sheetId = Sheets::getSheetId(self::$flowers_spreadsheet_id, self::$flowers_spreadsheet_stats_name);
+        if ($sheetId == -1) {
+            return;
+        }
+        $rows_raw = [[
+            $info['date'],
+            $info['count'],
+            $info['msg_id'],
+        ]];
+        $rows = [];
+        $date_format = ['date' => "dd.mm.yyyy"];
+        foreach ($rows_raw as $row) {
+            $cells = [];
+            foreach ($row as $key => $cell) {
+                $new_cell = [
+                    "userEnteredValue" => [],
+                    "userEnteredFormat" => []
+                ];
+                $value_type = (gettype($cell) == "integer" || gettype($cell) == "double") ? "numberValue" : "stringValue";
+                if ($cell instanceof DateTime) {
+                    $pattern = $date_format[$key] ?? "dd.mm.yyyy hh:mm";
+                    $value_type = "numberValue";
+                    $cell = Sheets::dateToSerial($cell);
+                    $new_cell["userEnteredFormat"]["numberFormat"] = ["type" => "DATE", "pattern" => $pattern];
+                }
+                $new_cell["userEnteredFormat"]["horizontalAlignment"] = (($value_type == "stringValue") ? "LEFT" : "CENTER");
+                $new_cell["userEnteredValue"] = [$value_type => $cell];
+                $cells[] = $new_cell;
+            }
+            $rows[] = ['values' => $cells];
+        }
+
+        $requests = [
+            new Google_Service_Sheets_Request([
+                'insertDimension' => [
+                    'range' => [
+                        'sheetId' => $sheetId,
+                        'dimension' => "ROWS",
+                        'startIndex' => '1',
+                        'endIndex' => '' . (count($rows) + 1)
+                    ],
+                    'inheritFromBefore' => true
+                ]
+            ]),
+            new Google_Service_Sheets_Request([
+                'updateCells' => [
+                    'rows' => $rows,
+                    'fields' => '*',
+                    'range' => [
+                        'sheetId' => $sheetId,
+                        'startRowIndex' => 1,
+                        'endRowIndex' => (count($rows) + 1),
+                        'startColumnIndex' => 0
+                    ],
+                ]
+            ])
+        ];
+
+        $request = new Google_Service_Sheets_BatchUpdateSpreadsheetRequest([
+            'requests' => $requests
+        ]);
+
+        try {
+            Sheets::getService()->spreadsheets->batchUpdate(self::$flowers_spreadsheet_id, $request);
+        } catch (Exception $e) {
+            exit($e->getMessage());
+        }
+    }
+
     public static function write($info, $force_return_array = false) {
         $sheetId = Sheets::getSheetId(self::$spreadsheet_id, self::$spreadsheet_stats_name);
         if ($sheetId == -1) {
@@ -380,7 +465,6 @@ class Sheets {
             }
             $rows[] = ['values' => $cells];
         }
-
 
         $requests = [
             new Google_Service_Sheets_Request([
