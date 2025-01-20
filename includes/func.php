@@ -1,23 +1,16 @@
 <?php
-require_once __DIR__ . '/config.php';
-
 function mb_ucfirst($string) {
     $firstChar = mb_substr($string, 0, 1);
     $then = mb_substr($string, 1);
     return mb_strtoupper($firstChar) . $then;
 }
+
 function mb_lcfirst($string) {
     $firstChar = mb_substr($string, 0, 1);
     $then = mb_substr($string, 1);
     return mb_strtolower($firstChar) . $then;
 }
-function formatNames($array) {
-    $last = array_pop($array);
-    if (count($array) < 1) {
-        return $last;
-    }
-    return join(", ", $array) . " и " . $last;
-}
+
 function formatCatName($string) {
     $name = "";
     $string = mb_strtolower(trim($string));
@@ -32,25 +25,6 @@ function formatCatName($string) {
     return $name;
 }
 
-function getCats($user_ids) {
-    if (!is_array($user_ids)) {
-        $user_ids = [$user_ids];
-    }
-    if (empty($user_ids)) {
-        return [];
-    }
-    $user_ids = join(", ", $user_ids);
-    $result = DB::q("SELECT users.id as 'id', cat_id, name, access_level FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE users.id IN ($user_ids)");
-    $data = [];
-    while ($row = DB::fetch($result)) {
-        $data[$row['id']] = ["id" => $row["cat_id"], "name" => $row["name"], "access_level" => $row["access_level"]];
-    }
-    return $data;
-}
-
-function checkAccess($id, $level) {
-    return DB::getVal("SELECT access_level FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE users.id=$id", -1) >= (ACCESS_LEVELS_TYPES[$level] ?? $level);
-}
 function declination($number, $titles, $onlyWords = false) {
     $start = ($onlyWords ? '' : "$number ");
     if (strpos($number, '.') !== false) {
@@ -59,41 +33,6 @@ function declination($number, $titles, $onlyWords = false) {
         $cases = [2, 0, 1, 1, 1, 2];
         $number = abs($number);
         return $start . $titles[($number % 100 > 4 && $number % 100 < 20) ? 2 : $cases[min($number % 10, 5)]];
-    }
-}
-
-function getTimePeriodFromString($string, &$from, &$to) {
-    if (preg_match('/(\d+\.\d+(\.\d*)?)?-(\d+\.\d+(\.\d*)?)?/iu', $string)) {
-        $interval = explode('-', $string);
-        foreach ($interval as $key => $date) {
-            $date = explode('.', $date);
-            if (count($date) > 2 && $date[2]) {
-                $year = $date[2];
-                if (strlen($year) < 4) {
-                    $year = '20' . $year;
-                    $date[2] = $year;
-                }
-            } else {
-                $date[2] = date("Y");
-            }
-            $interval[$key] = join('.', $date);
-        }
-        $from = DateTime::createFromFormat('d.m.Y H:i:s', $interval[0] . " 00:00:00");
-        $to = DateTime::createFromFormat('d.m.Y H:i:s', $interval[1] . " 23:59:59");
-    } elseif (preg_match('/\d+\.\d+(\.\d+)?/iu', $string)) {
-        $date = explode('.', $string);
-        if (count($date) > 2 && $date[2]) {
-            $year = $date[2];
-            if (strlen($year) < 4 && $date[2]) {
-                $year = '20' . $year;
-                $date[2] = $year;
-            }
-        } else {
-            $date[2] = date("Y");
-        }
-        $date = join('.', $date);
-        $from = DateTime::createFromFormat('d.m.Y H:i:s', $date . " 00:00:00");
-        $to = DateTime::createFromFormat('d.m.Y H:i:s', $date . " 23:59:59");
     }
 }
 
@@ -117,4 +56,32 @@ function api($method, $params) {
         throw new Exception("Invalid response for {$method} request");
     }
     return $response['response'];
+}
+
+function getUserInfo($user_id, $case = "nom") { // Возвращает объект пользователя
+    try {
+        $data = api('users.get', array(
+            'user_id' => $user_id,
+            'fields' => "sex, online",
+            'name_case' => $case,
+        ));
+        if (is_array($user_id)) {
+            return $data;
+        }
+        return $data[0];
+    } catch (Exception $e) {
+        return [];
+    }
+}
+
+function sendReaction($peer_id, $cmid, $reaction_id) {
+    try {
+        api('messages.sendReaction', array(
+            'peer_id' => $peer_id,
+            'cmid' => $cmid,
+            'reaction_id' => $reaction_id,
+        ));
+    } catch (Exception $e) {
+        var_dump($e);
+    }
 }

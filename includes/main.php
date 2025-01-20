@@ -5,6 +5,29 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/sheets.php';
 require_once __DIR__ . '/config.php';
 
+function getCats($user_ids) {
+    if (!is_array($user_ids)) {
+        $user_ids = [$user_ids];
+    }
+    if (empty($user_ids)) {
+        return [];
+    }
+    $user_ids = join(", ", $user_ids);
+    $result = DB::q("SELECT users.id as 'id', cat_id, name, access_level FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE users.id IN ($user_ids)");
+    $data = [];
+    while ($row = DB::fetch($result)) {
+        $data[$row['id']] = ["id" => $row["cat_id"], "name" => $row["name"], "access_level" => $row["access_level"]];
+    }
+    return $data;
+}
+
+function formatNames($array) {
+    $last = array_pop($array);
+    if (count($array) < 1) {
+        return $last;
+    }
+    return join(", ", $array) . " и " . $last;
+}
 /*
  * ?: is "x ? x : y"
  * ?? is "isset(x) ? x : y"
@@ -617,7 +640,7 @@ class Peck {
         } elseif (preg_match('/^почистила? от грязи/iu', $line)) {
             $num = 24;
             $type_s = "Чистка от грязи";
-            $count = (intval(preg_replace('/[^\d]/', '', $count)) * -1) . "";
+            $count = (intval(preg_replace('/[^\d]/', '', $count)) * -1);
         }
 
         $cat = getCats($object['from_id'])[$object['from_id']] ?? [];

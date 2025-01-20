@@ -1,7 +1,82 @@
 <?php
 date_default_timezone_set("Europe/Moscow");
-
 header('Content-Type: text/html; charset=utf-8');
+
+// Типы доступов
+if (!defined('ACCESS_LEVELS_TYPES')) define('ACCESS_LEVELS_TYPES', [
+    "ИС" => 0,
+    "Наблюдатель" => 1,
+    "Разрешение" => 2,
+    "Проверяющий" => 3,
+    "Куратор" => 4,
+    "Целитель" => 5,
+    "Доверенный" => 6,
+    "Глава" => 7,
+    "Мама" => 100,
+]);
+
+function getCommand(&$text, $allowCommas = false, $reverse = false) {
+    $text = trim($text);
+    if ($reverse) {
+        $space = mb_strrpos($text, ' ') ?: null;
+        $command = mb_substr(mb_strtolower($text), $space ?? -1 + 1);
+        $text = (($space === null) ? "" : mb_substr($text, 0, $space ?? -1 + 1));
+    } else {
+        $space = mb_strpos($text, ' ') ?: null;
+        $command = mb_substr(mb_strtolower($text), 0, $space);
+        $text = (($space === null) ? "" : mb_substr($text, $space + 1));
+    }
+    return mb_ereg_replace('[^а-яА-ЯЁё\w' . ($allowCommas ? '\.' : '') . '\d\-\[\]\|]+', '', trim($command));
+}
+
+function mapUsers($user_id_array, $case = "nom") {
+    $user_array = getUserInfo($user_id_array, $case);
+    $mapped = array_map(function($u) {return "[id$u[id]|$u[first_name] $u[last_name]]"; }, $user_array);
+    if (count($mapped) < 2) {
+        return join(", ", $mapped);
+    }
+    $last = array_pop($mapped);
+    return join(", ", $mapped) . " и " . $last;
+}
+
+function checkAccess($id, $level) {
+    return DB::getVal("SELECT access_level FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE users.id=$id", -1) >= (ACCESS_LEVELS_TYPES[$level] ?? $level);
+}
+
+function getTimePeriodFromString($string, &$from, &$to) {
+    if (preg_match('/(\d+\.\d+(\.\d*)?)?-(\d+\.\d+(\.\d*)?)?/iu', $string)) {
+        $interval = explode('-', $string);
+        foreach ($interval as $key => $date) {
+            $date = explode('.', $date);
+            if (count($date) > 2 && $date[2]) {
+                $year = $date[2];
+                if (strlen($year) < 4) {
+                    $year = '20' . $year;
+                    $date[2] = $year;
+                }
+            } else {
+                $date[2] = date("Y");
+            }
+            $interval[$key] = join('.', $date);
+        }
+        $from = DateTime::createFromFormat('d.m.Y H:i:s', $interval[0] . " 00:00:00");
+        $to = DateTime::createFromFormat('d.m.Y H:i:s', $interval[1] . " 23:59:59");
+    } elseif (preg_match('/\d+\.\d+(\.\d+)?/iu', $string)) {
+        $date = explode('.', $string);
+        if (count($date) > 2 && $date[2]) {
+            $year = $date[2];
+            if (strlen($year) < 4 && $date[2]) {
+                $year = '20' . $year;
+                $date[2] = $year;
+            }
+        } else {
+            $date[2] = date("Y");
+        }
+        $date = join('.', $date);
+        $from = DateTime::createFromFormat('d.m.Y H:i:s', $date . " 00:00:00");
+        $to = DateTime::createFromFormat('d.m.Y H:i:s', $date . " 23:59:59");
+    }
+}
 
 require_once __DIR__ . '/includes/main.php';
 
@@ -25,6 +100,7 @@ switch ($event['type']) {
         echo('Unsupported event pls help: ' . $event['type']);
         break;
 }
+
 function send_message($peer_id, $object) {
     // TODO: peer_id check
     if ($object['date'] + 10 < time()) {
@@ -247,17 +323,19 @@ function send_message($peer_id, $object) {
             DB::q("UPDATE users SET asked_to_tag_at = '$date' WHERE id=$me");
             $affected = DB::affectedRows();
             if ($affected < 1) {
-                $sticker_id = 83436;
+//                $sticker_id = 83436;
             } else {
                 sendReaction($peer_id, $object["conversation_message_id"], 10);
+                return;
             }
         } elseif ($command . " " . $text == "не тагай") {
             DB::q("UPDATE users SET asked_to_tag_at = '0000-00-00 00:00:00' WHERE id=$me");
             $affected = DB::affectedRows();
             if ($affected < 1) {
-                $sticker_id = 83436;
+//                $sticker_id = 83436;
             } else {
                 sendReaction($peer_id, $object["conversation_message_id"], 10);
+                return;
             }
         } elseif ($command . " " . $text == "тагни желающих в перенос") {
             if (!checkAccess($me, "Доверенный")) {
@@ -317,7 +395,14 @@ function send_message($peer_id, $object) {
         } elseif ($command == "активность") {
             $command = getCommand($text);
             $who = $me;
-            if ($command != "" && $command != "за") {
+            $hour = intval(date('H'));
+            $minute = intval(date('i'));
+            if (in_array($hour, [11, 15, 16]) && $minute >= 40 && $minute < 55 || $isMom) {
+                $sticker_id = 86521;
+//                sendReaction($peer_id, $object["conversation_message_id"], 8);
+                // вк говнина и не любит отправку реакций, либо я говнина и не умею делать апи запросы. короче удачи
+            }
+            if ($sticker_id == 0 && $command != "" && $command != "за") {
                 $i = intval(((preg_match('/^\[id(\d+)\|/ui', $command, $matches)) ? $matches[1] : 0));
                 if ($i > 0) {
                     $who = $i;
@@ -341,14 +426,6 @@ function send_message($peer_id, $object) {
                     if ($command != "за") {
                         $command = getCommand($text);
                     }
-                }
-            }
-            if ($sticker_id == 0) {
-                $hour = intval(date('H'));
-                $minute = intval(date('i'));
-                if (in_array($hour, [11, 15, 16]) && $minute >= 40 && $minute < 55) {
-                    $sticker_id = 86521;
-                    sendReaction($peer_id, $object["conversation_message_id"], 8);
                 }
             }
             if ($sticker_id == 0 && $message == "") {
@@ -950,7 +1027,6 @@ function send_message($peer_id, $object) {
                 'random_id' => $random_id . ""
             ));
         } catch (Exception $e) {
-            var_dump($message);
             print_r($e);
         }
     }
@@ -975,51 +1051,4 @@ function send_message($peer_id, $object) {
             }
         }
     }
-}
-function sendReaction($peer_id, $cmid, $reaction_id) {
-    api('messages.sendReaction', array(
-        'peer_id' => $peer_id,
-        'cmid' => $cmid,
-        'reaction_id' => $reaction_id,
-    ));
-}
-
-function getUserInfo($user_id, $case = "nom") { // Возвращает объект пользователя
-    try {
-        $data = api('users.get', array(
-            'user_id' => $user_id,
-            'fields' => "sex, online",
-            'name_case' => $case,
-        ));
-        if (is_array($user_id)) {
-            return $data;
-        }
-        return $data[0];
-    } catch (Exception $e) {
-        return [];
-    }
-}
-
-function getCommand(&$text, $allowCommas = false, $reverse = false) {
-    $text = trim($text);
-    if ($reverse) {
-        $space = mb_strrpos($text, ' ') ?: null;
-        $command = mb_substr(mb_strtolower($text), $space ?? -1 + 1);
-        $text = (($space === null) ? "" : mb_substr($text, 0, $space ?? -1 + 1));
-    } else {
-        $space = mb_strpos($text, ' ') ?: null;
-        $command = mb_substr(mb_strtolower($text), 0, $space);
-        $text = (($space === null) ? "" : mb_substr($text, $space + 1));
-    }
-    return mb_ereg_replace('[^а-яА-ЯЁё\w' . ($allowCommas ? '\.' : '') . '\d\-\[\]\|]+', '', trim($command));
-}
-
-function mapUsers($user_id_array, $case = "nom") {
-    $user_array = getUserInfo($user_id_array, $case);
-    $mapped = array_map(function($u) {return "[id$u[id]|$u[first_name] $u[last_name]]"; }, $user_array);
-    if (count($mapped) < 2) {
-        return join(", ", $mapped);
-    }
-    $last = array_pop($mapped);
-    return join(", ", $mapped) . " и " . $last;
 }
