@@ -78,45 +78,8 @@ function board_event($object, $type) {
             Sheets::remove($key);
         }
     }
+}
 
-}
-/* EDIT
-DELETE
-    "object": {
-        "topic_owner_id": -62974276,
-        "id": 5083,
-        "topic_id": 40293628
-    }
- *  "object": {
-        "id": 3490,
-        "from_id": 320045059,
-        "date": 1589471841,
-        "text": "Тис - 406811 [https://catwar.su/cat406811]",
-        "topic_owner_id": -62974276,
-        "topic_id": 40293628
-    }
- *
- * NEW
- *
-    "object": {
-        "id": 5083,
-        "from_id": 320045059,
-        "date": 1735905232,
-        "text": "123",
-        "topic_owner_id": -62974276,
-        "topic_id": 40293628
-    }
-}
-RESTORE
-    "object": {
-        "id": 5083,
-        "from_id": 320045059,
-        "date": 1735905232,
-        "text": "123",
-        "topic_owner_id": -62974276,
-        "topic_id": 40293628
-    }
- * */
 function send_message($peer_id, $object) {
     if ($object['date'] + 10 < time()) {
         return;
@@ -149,7 +112,6 @@ function send_message($peer_id, $object) {
         }
     }
     if (!$isManager) {
-//        print_r("error 3");
         return;
     }
     $messageArray = [];
