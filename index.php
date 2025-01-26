@@ -115,7 +115,7 @@ function send_message($peer_id, $object) {
     $sticker_id = 0;
     $random_id = 0;
     $isMom = ($me == PEER_MOM || $peer_id == PEER_MOM);
-    if (!in_array($peer_id, [PEER_MOM, PEER_TEST, PEER_WORK])) {
+    if (!in_array($peer_id, [PEER_MOM, PEER_TEST]) && !in_array($peer_id,PEERS_WORK)) {
         return;
     }
 
@@ -983,33 +983,7 @@ function send_message($peer_id, $object) {
             }
             $return = join("", $return);
             $message = "\$object$return = " . json_encode($value);
-        } elseif ($command == "скажи" && $isMom) {
-            $message = $text;
-            if (is_numeric($message)) {
-                $message = intval($message);
-            }
-            $peer_id = PEER_WORK;
         }
-//        elseif ($command == "тест" && $isMom) {
-//            $id = explode("_", getCommand($text));
-//            $test = api('messages.getByConversationMessageId', array(
-//                'peer_id' => $id[0],
-//                'conversation_message_ids' => $id[1],
-//            ));
-//            $obj_d = $test["items"][0];
-//            $info = DB::getRow("SELECT users.id AS 'user_id', cat_id, name, norm, access_level, has_medal, has_permit FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE users.id=".$obj_d["from_id"]);
-//            $message = "Данные дозора:"
-//                . "\n- автор сообщения: [id" . $obj_d["from_id"] . "|" . $info["name"] . "]"
-//                . "\n- дата отправки сообщения: " . date("d.m.Y H:i:s", $obj_d["date"])
-//                . "\n- дата изменения сообщения: " . date("d.m.Y H:i:s", $obj_d["update_time"])
-//            . "\n- количество приложенных скринов (должно быть 2): " . count($obj_d["attachments"]);
-//            $att = $obj_d["attachments"];
-//            $message .= "\n";
-//            foreach ($att as $key => $item) {
-//                $photo = $item["photo"];
-//                $message .= "\n -скрин №" . ($key + 1) . ". Отправлен в ". date("H:i:s", $photo["date"]);
-//            }
-//        }
     }
 
     if (is_int($message)) {
