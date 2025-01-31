@@ -33,6 +33,7 @@ class Sheets {
         $response = $service->spreadsheets_values->get(SPREADSHEET_ID, $range);
         $values = $response->getValues();
         $num = 0;
+        $data = [];
         if (!empty($values)) {
             foreach ($values as $rowNum => $row) {
                 $isOk = false;
@@ -48,14 +49,12 @@ class Sheets {
                 }
                 if ($isOk) {
                     $num = $rowNum;
+                    $data = $row;
                     break;
                 }
             }
         }
-//        print_r($conditions); print_r("\n");
-//        print_r($values); print_r("\n");
-//        print_r($num);
-        return $num;
+        return [$num, $data];
     }
     public static function write($info) {
         $service = Sheets::getService();
@@ -149,7 +148,7 @@ class Sheets {
             exit($e->getMessage());
         }
     }
-    public static function getColumnArray($num, $conditions = []) {
+    public static function getArray($conditions = []) {
         $service = Sheets::getService();
         $range = SPREADSHEET_LIST_NAME . "!" . SPREADSHEET_LIST_RANGE;
         $response = $service->spreadsheets_values->get(SPREADSHEET_ID, $range);
@@ -170,7 +169,7 @@ class Sheets {
                     $isOk = $isOk || $isCondOk;
                 }
                 if ($isOk) {
-                    $array[$rowNum] = $row[$num];
+                    $array[$rowNum] = $row;
                 }
             }
         }

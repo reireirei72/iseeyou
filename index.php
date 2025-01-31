@@ -106,6 +106,9 @@ function send_message($peer_id, $object) {
     if ($object['date'] + 10 < time()) {
         return;
     }
+    if (!in_array($peer_id, [PEER_MOM, PEER_TEST, PEER_WORK])) {
+        return;
+    }
     $me = intval($object['from_id']);
     $who = $me;
     $disable_mentions = true;
@@ -115,9 +118,6 @@ function send_message($peer_id, $object) {
     $sticker_id = 0;
     $random_id = 0;
     $isMom = ($me == PEER_MOM || $peer_id == PEER_MOM);
-    if (!in_array($peer_id, [PEER_MOM, PEER_TEST]) && !in_array($peer_id,PEERS_WORK)) {
-        return;
-    }
 
     $text = trim($object['text']);
     $reply = Peck::getReply($object);

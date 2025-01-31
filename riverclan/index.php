@@ -35,11 +35,42 @@ switch ($event['type']) {
         }
         echo('ok');
         break;
+    case "group_leave":
+        $object = $event['object'];
+        try {
+            clean_leaver($object);
+        } catch (Exception $e) {
+            print_r($e);
+        }
+        echo('ok');
+        break;
     default:
         echo('Unsupported event pls help: ' . $event['type']);
         break;
 }
-
+function clean_leaver($object) {
+    if (!$object["self"]) {
+        return; // Игнорировать исключения
+    }
+    $user_id = $object["user_id"];
+    list($key, $row) = Sheets::search([
+        4 => $user_id,
+    ]);
+    if (!$key) {
+        return;
+    }
+    Sheets::remove($key);
+    $comment_id = $row[6];
+    try {
+        api('board.deleteComment', array(
+            'group_id' => GROUP_ID,
+            'topic_id' => PEOPLE_BOARD,
+            'comment_id' => $comment_id,
+        ));
+    } catch (Exception $e) {
+        print_r($e);
+    }
+}
 function board_event($object, $type) {
     if ($object["topic_id"] != PEOPLE_BOARD || $object["from_id"] < 0) {
         return;
@@ -54,7 +85,7 @@ function board_event($object, $type) {
         $name = formatCatName(trim($matches[1] ?? ""));
         $cat_id = intval($matches[2] ?? 0);
         $nickname = trim($matches[4] ?? "");
-        $key = Sheets::search([
+        list($key, $row) = Sheets::search([
             6 => $object['id'],
         ]);
         $data = [[
@@ -71,7 +102,7 @@ function board_event($object, $type) {
             Sheets::modify($key, $data[0]);
         }
     } elseif ($type == "delete") {
-        $key = Sheets::search([
+        list($key, $row) = Sheets::search([
             6 => $object['id'],
         ]);
         if ($key > 0) {
@@ -120,21 +151,31 @@ function send_message($peer_id, $object) {
             'group_id' => GROUP_ID,
         ));
         $members = $members["items"];
-        $tableIds = Sheets::getColumnArray(4);
+        $tableIds = Sheets::getArray();
+        $tableIds = array_map(function($arr) { return $arr[4]; }, $tableIds);
         array_shift($tableIds); // Удаляет заголовок
         $notInTable = [];
+        $doubles = [];
+        $inTable = [];
+        foreach ($tableIds as $tableId) {
+            if (in_array($tableId, $inTable)) {
+                $doubles[] = $tableId;
+            } else {
+                $inTable[] = $tableId;
+            }
+        }
         foreach ($members as $key => $member) {
-            $index = array_search($member, $tableIds);
+            $index = array_search($member, $inTable);
             if ($index === false) {
                 $notInTable[] = $member;
                 $all[] = $member;
             } else {
-                unset($tableIds[$index]);
+                unset($inTable[$index]);
                 unset($members[$key]);
             }
         }
-        $notInGroup = $tableIds;
-        $all = array_merge($notInTable, $notInGroup);
+        $notInGroup = $inTable;
+        $all = array_merge($notInTable, $notInGroup, $doubles);
         if (empty($all)) {
             $messageArray[] = "Всё идеально засинхронено, все молодцы";
         } else {
@@ -159,7 +200,14 @@ function send_message($peer_id, $object) {
                     $message .= "$user [id$user|$userInfo[first_name] $userInfo[last_name]]\n";
                 }
             } else {
-                $message .= "Здесь пусто!";
+                $message .= "Здесь пусто!\n";
+            }
+            if (!empty($doubles)) {
+                foreach ($doubles as $user) {
+                    $message .= "\nПрисутствуют в таблице больше 1 раза (отписались в обсуждении больше 1 раза) (почистите их комментарии вручную плиз):\n";
+                    $userInfo = $list[$user] ?? ["first_name" => "Пользователь", "last_name" => "удалён"];
+                    $message .= "$user [id$user|$userInfo[first_name] $userInfo[last_name]]\n";
+                }
             }
             $message = explode("\n", $message);
             $displayMessage = "";
@@ -173,12 +221,13 @@ function send_message($peer_id, $object) {
             $messageArray[] = trim($displayMessage);
         }
     } elseif ($text == $commands["clean"]) {
-        $missingIds = Sheets::getColumnArray(6, [
-            0 => "?",
-        ]);
-        if (!empty($missingIds)) {
-            $missingIds = array_slice($missingIds, 0, 5);
-            foreach ($missingIds as $id) {
+        $missing = Sheets::getArray([0 => "?"]);
+        $missingRows = array_keys($missing);
+        if (!empty($missingRows)) {
+            $missingRows = array_slice($missingRows, 0, 5);
+            Sheets::remove($missingRows);
+            foreach ($missingRows as $rowNum) {
+                $id = $missing[$rowNum][6];
                 try {
                     api('board.deleteComment', array(
                         'group_id' => GROUP_ID,
@@ -189,8 +238,7 @@ function send_message($peer_id, $object) {
                     print_r($e);
                 }
             }
-            $messageArray[] = "Удалено " . count($missingIds) . " записей!\n(Если остались ещё записи - повторите команду ещё раз)";
-
+            $messageArray[] = "Удалено " . count($missingRows) . " записей!\n(Если остались ещё записи - повторите команду ещё раз)";
         } else {
             $messageArray[] = "Табличка уже чиста от удалённых :о";
         }
