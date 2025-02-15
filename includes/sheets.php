@@ -64,6 +64,7 @@ class Sheets {
             22 => ['type' => 'Проверка отчётов',                            'points' => 4],
             23 => ['type' => 'Обновление архива памяток',                   'points' => 2],
             24 => ['type' => 'Чистка от грязи',                             'points' => ($hidden ? 1 : 0)],
+            25 => ['type' => 'Перебор камней',                              'points' => ceil(min(5, max(0, ($extra - 5) / 10)))],
         ];
         return $legend[$num] ?? 0;
     }

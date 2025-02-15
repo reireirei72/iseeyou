@@ -81,7 +81,7 @@ function board_event($object, $type) {
         $text = (str_replace(["\n"], ' ', $text));
         $text = trim(str_replace(['—', '–', '‐'], '-', $text));
         // Тис - 406811 - кличка
-        preg_match('/^([А-яЁёë ]+)\s*-\s*(\d+)(\s*-?\s*([А-яЁёë,/\\\]+)?)?/iu', $text, $matches);
+        preg_match('/^([А-яЁёë ]+)\s*-\s*(\d+)(\s*-?\s*([А-яЁёë,\/\\\\]+)?)?/iu', $text, $matches);
         $name = formatCatName(trim($matches[1] ?? ""));
         $cat_id = intval($matches[2] ?? 0);
         $nickname = trim($matches[4] ?? "");

@@ -25,6 +25,22 @@ function formatCatName($string) {
     return $name;
 }
 
+function getCats($user_ids) {
+    if (!is_array($user_ids)) {
+        $user_ids = [$user_ids];
+    }
+    if (empty($user_ids)) {
+        return [];
+    }
+    $user_ids = join(", ", $user_ids);
+    $result = DB::q("SELECT users.id as 'id', cat_id, name, access_level FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE users.id IN ($user_ids)");
+    $data = [];
+    while ($row = DB::fetch($result)) {
+        $data[$row['id']] = ["id" => $row["cat_id"], "name" => $row["name"], "access_level" => $row["access_level"]];
+    }
+    return $data;
+}
+
 function declination($number, $titles, $onlyWords = false) {
     $start = ($onlyWords ? '' : "$number ");
     if (strpos($number, '.') !== false) {
@@ -34,6 +50,20 @@ function declination($number, $titles, $onlyWords = false) {
         $number = abs($number);
         return $start . $titles[($number % 100 > 4 && $number % 100 < 20) ? 2 : $cases[min($number % 10, 5)]];
     }
+}
+
+function getCommand(&$text, $allowCommas = false, $reverse = false) {
+    $text = trim($text);
+    if ($reverse) {
+        $space = mb_strrpos($text, ' ') ?: null;
+        $command = mb_substr(mb_strtolower($text), $space ?? -1 + 1);
+        $text = (($space === null) ? "" : mb_substr($text, 0, $space ?? -1 + 1));
+    } else {
+        $space = mb_strpos($text, ' ') ?: null;
+        $command = mb_substr(mb_strtolower($text), 0, $space);
+        $text = (($space === null) ? "" : mb_substr($text, $space + 1));
+    }
+    return mb_ereg_replace('[^а-яА-ЯЁё\w' . ($allowCommas ? '\.' : '') . '\d\-\[\]\|]+', '', trim($command));
 }
 
 function api($method, $params) {
@@ -74,6 +104,16 @@ function getUserInfo($user_id, $case = "nom") { // Возвращает объе
     }
 }
 
+function mapUsers($user_id_array, $case = "nom") {
+    $user_array = getUserInfo($user_id_array, $case);
+    $mapped = array_map(function($u) {return "[id$u[id]|$u[first_name] $u[last_name]]"; }, $user_array);
+    if (count($mapped) < 2) {
+        return join(", ", $mapped);
+    }
+    $last = array_pop($mapped);
+    return join(", ", $mapped) . " и " . $last;
+}
+
 function sendReaction($peer_id, $cmid, $reaction_id) {
     try {
         api('messages.sendReaction', array(
@@ -84,4 +124,16 @@ function sendReaction($peer_id, $cmid, $reaction_id) {
     } catch (Exception $e) {
         var_dump($e);
     }
+}
+function stringToRandomId($str) {
+    // Use the crc32 function to hash the string
+    $hash = crc32($str);
+
+    // Ensure the result is always treated as a signed 32-bit integer
+    if ($hash & 0x80000000) {
+        // Convert to negative if the highest bit is set
+        $hash = -((~$hash & 0xFFFFFFFF) + 1);
+    }
+
+    return $hash;
 }

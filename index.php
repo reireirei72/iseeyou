@@ -15,30 +15,6 @@ if (!defined('ACCESS_LEVELS_TYPES')) define('ACCESS_LEVELS_TYPES', [
     "Мама" => 100,
 ]);
 
-function getCommand(&$text, $allowCommas = false, $reverse = false) {
-    $text = trim($text);
-    if ($reverse) {
-        $space = mb_strrpos($text, ' ') ?: null;
-        $command = mb_substr(mb_strtolower($text), $space ?? -1 + 1);
-        $text = (($space === null) ? "" : mb_substr($text, 0, $space ?? -1 + 1));
-    } else {
-        $space = mb_strpos($text, ' ') ?: null;
-        $command = mb_substr(mb_strtolower($text), 0, $space);
-        $text = (($space === null) ? "" : mb_substr($text, $space + 1));
-    }
-    return mb_ereg_replace('[^а-яА-ЯЁё\w' . ($allowCommas ? '\.' : '') . '\d\-\[\]\|]+', '', trim($command));
-}
-
-function mapUsers($user_id_array, $case = "nom") {
-    $user_array = getUserInfo($user_id_array, $case);
-    $mapped = array_map(function($u) {return "[id$u[id]|$u[first_name] $u[last_name]]"; }, $user_array);
-    if (count($mapped) < 2) {
-        return join(", ", $mapped);
-    }
-    $last = array_pop($mapped);
-    return join(", ", $mapped) . " и " . $last;
-}
-
 function checkAccess($id, $level) {
     return DB::getVal("SELECT access_level FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE users.id=$id", -1) >= (ACCESS_LEVELS_TYPES[$level] ?? $level);
 }
@@ -121,7 +97,7 @@ function send_message($peer_id, $object) {
 
     $text = trim($object['text']);
     $reply = Peck::getReply($object);
-    $line = mb_strtolower(mb_ereg_replace('[^а-яА-ЯЁё\w\d\-\[\]\|]+', '', trim($text)));
+    $line = mb_strtolower(mb_ereg_replace('[^а-яА-ЯЁё\w\d\-\[\]\|]+', '', $text));
     if ($line == "отмена" && !empty($reply)) {
         $message = Peck::cancelAct($object);
     } else {

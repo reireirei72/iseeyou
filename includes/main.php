@@ -5,22 +5,6 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/sheets.php';
 require_once __DIR__ . '/config.php';
 
-function getCats($user_ids) {
-    if (!is_array($user_ids)) {
-        $user_ids = [$user_ids];
-    }
-    if (empty($user_ids)) {
-        return [];
-    }
-    $user_ids = join(", ", $user_ids);
-    $result = DB::q("SELECT users.id as 'id', cat_id, name, access_level FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE users.id IN ($user_ids)");
-    $data = [];
-    while ($row = DB::fetch($result)) {
-        $data[$row['id']] = ["id" => $row["cat_id"], "name" => $row["name"], "access_level" => $row["access_level"]];
-    }
-    return $data;
-}
-
 function formatNames($array) {
     $last = array_pop($array);
     if (count($array) < 1) {
@@ -446,6 +430,7 @@ class Peck {
                 . "выдача костоправов\n"
                 . "чистка от грязи\n"
                 . "квест\n"
+                . "перебор камней"
                 ;
         }
         if (preg_match('/^дозоры?$/iu', $type)) {
@@ -498,9 +483,9 @@ class Peck {
             return "> Выполнил(а) поручение, (количество мышей)\n"
                 . "Количество мышей в скобки закрывать не обязательно";
         } elseif (preg_match('/^обход/iu', $type)) {
-            return "> Обошёл(ла) ПВ/ПО/Детскую/все спальные локации\n"
+            return "> Обошёл(ла) ПВ/ПО/Детскую/все спальные локации, чч:мм\n"
                 . "Можно указывать две локации (например, 'ПВ и ПО' или 'ПО и Детскую')."
-                . " К сообщению необходимо прикладывать скриншот истории";
+                . " К сообщению необходимо прикладывать скриншот истории и время начала обхода";
         } elseif (preg_match('/^мыши/iu', $type)) {
             return "> Поймал(а) мышей\n"
                 . "К сообщению необходимо прикладывать скриншот, на котором видно пойманных мышей";
@@ -517,6 +502,9 @@ class Peck {
         } elseif (preg_match('/^квест/iu', $type)) {
             return "> Выполнил(а) квест на ОС\n"
                 . "Недоступно тем, кто на ИС, и оруженосцам";
+        } elseif (preg_match('/^перебор камней/iu', $type)) {
+            return "> Перебрал(а) камни, (количество) единиц\n"
+                . "К сообщению необходимо прикладывать скриншот";
         }
         return "Неизвестный шаблон '$type'";
     }
@@ -559,8 +547,33 @@ class Peck {
             return Peck::taskCheckReports($object) ?: "";
         } elseif (preg_match('/^обновила? архив памяток/iu', $text)) {
             return Peck::taskUpdateArchive($object) ?: "";
+        } elseif (preg_match('/^перебрала? камни/iu', $text)) {
+            return Peck::stoneCheck($object) ?: "";
         }
         return "";
+    }
+    private static function stoneCheck($object) {
+        $cat = getCats($object['from_id'])[$object['from_id']] ?? [];
+        if (empty($cat)) return "";
+
+        if (count($object["attachments"]) < 1) {
+            return "Ошибка: к сообщению должен быть прикреплён скриншот";
+        }
+
+        $count = intval(mb_ereg_replace('\D+', '', $object['text']));
+
+        $report_date = new DateTime();
+        $report_date->setTimestamp($object['date']);
+
+        $data = [[
+            'num' => 25,
+            'cat' => $cat["id"],
+            'date' => $report_date,
+            'extra' => $count,
+            'msg_id' => $object['peer_id'] . "_" . $object['conversation_message_id']
+        ]];
+        $points = Sheets::write($data);
+        return "Перебор камней засчитан, $cat[name].\n+" . declination($points, ['балл', 'балла', 'баллов']);
     }
     private static function taskCheckReports($object) {
         $cat = getCats($object['from_id'])[$object['from_id']] ?? [];
@@ -1149,7 +1162,7 @@ class Peck {
         }
         $photo = $attachments[0]["photo"];
         if (!isset($photo)) {
-            if (!isset($photo)) return "";
+            return "";
         }
 
         $act_date = new DateTime();
