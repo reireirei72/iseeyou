@@ -12,6 +12,10 @@ class Fly {
 //        $hasReplies = (!empty($object['fwd_messages']) || !empty($object['reply_message']));
         if (preg_match('/^(сбор с (ущелья|уступов)|отдельный сбор)/iu', $text)) {
             return Fly::sbor($object) ?: "";
+        } elseif (preg_match('/^ун[её]с(ла)? перья/iu', $text)) {
+            return Fly::transportFeathers($object) ?: "";
+        } elseif (preg_match('/^ун[её]с(ла)? соплеменник(а|ов)/iu', $text)) {
+            return Fly::transportCats($object) ?: "";
         }
         return "";
     }
@@ -67,5 +71,44 @@ class Fly {
         $points = Sheets::write($data);
         $type = mb_ucfirst($type);
         return "$type засчитан, $cat[name].\n+" . declination($points, ['балл', 'балла', 'баллов']);
+    }
+    private static function transportFeathers($object) {
+        preg_match('/(\d+)\s*(\((перевес|без перевеса)\))?/iu', $object['text'], $matches);
+        $count = intval($matches[1] ?? 0);
+        if ($count < 1) return "Сколько???";
+        $hasOverweight = ($matches[3] ?? "") == "перевес";
+        if (count($object["attachments"]) < 1) {
+            return "Задание не засчитано! Необходимо прикрепить скриншот истории";
+        }
+        $cat = Fly::getCats($object['from_id'])[$object['from_id']] ?? [];
+        if (empty($cat)) return Fly::$missingCatMsg;
+        $data = [[
+            'num' => 3,
+            'cat' => $cat['id'],
+            'date' => Fly::getDate($object),
+            'hidden' => $hasOverweight,
+            'msg_id' => $object['peer_id'] . "_" . $object['conversation_message_id']
+        ]];
+        $points = Sheets::write($data);
+        return "Транспортировка перьев засчитана, $cat[name].\n+" . declination($points, ['балл', 'балла', 'баллов']);
+
+    }
+    private static function transportCats($object) {
+        preg_match('/перевес ([\d.,]+)/iu', $object['text'], $matches);
+        $overweight = floatval(str_replace(",", ".", ($matches[1] ?? "0")));
+        if (count($object["attachments"]) < 1) {
+            return "Задание не засчитано! Необходимо прикрепить скриншот истории (и перевеса, если он есть)";
+        }
+        $cat = Fly::getCats($object['from_id'])[$object['from_id']] ?? [];
+        if (empty($cat)) return Fly::$missingCatMsg;
+        $data = [[
+            'num' => 4,
+            'cat' => $cat['id'],
+            'date' => Fly::getDate($object),
+            'hidden' => $overweight,
+            'msg_id' => $object['peer_id'] . "_" . $object['conversation_message_id']
+        ]];
+        $points = Sheets::write($data);
+        return "Транспортировка соплеменника засчитана, $cat[name].\n+" . declination($points, ['балл', 'балла', 'баллов']);
     }
 }

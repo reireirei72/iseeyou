@@ -37,9 +37,11 @@ class Sheets {
 
     private static function getInfo($num, $hidden, $extra) {
         $legend = [
-            0  => ['type' => 'Сбор с ущелья',   'points' => 6 + 3 * intval($extra)],
-            1  => ['type' => 'Сбор с уступов',  'points' => 6 + 2 * intval($extra)],
-            2  => ['type' => 'Отдельный сбор',  'points' => 3 + intval($extra)],
+            0  => ['type' => 'Сбор с ущелья',                   'points' => 6 + 3 * intval($extra)],
+            1  => ['type' => 'Сбор с уступов',                  'points' => 6 + 2 * intval($extra)],
+            2  => ['type' => 'Сбор отдельных ресурсов',         'points' => 3 + intval($extra)],
+            3  => ['type' => 'Транспортировка перьев',          'points' => 3 + ($hidden ? 3 : 0)],
+            4  => ['type' => 'Транспортировка соплеменника',    'points' => 2 + round(floatval($hidden))],
         ];
         return $legend[$num] ?? 0;
     }
