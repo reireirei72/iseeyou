@@ -29,8 +29,8 @@ switch ($event['type']) {
 }
 
 function checkAccess($id, $level) {
-    $id = DB::escape($id);
-    return DB::getVal("SELECT access_level FROM cats_fly WHERE id=$id", -1) >= (ACCESS_LEVELS_TYPES[$level] ?? $level);
+    $member = Sheets::getMember($id);
+    return $member["access_level"] >= (ACCESS_LEVELS_TYPES[$level] ?? $level);
 }
 
 function getStickers($type) {
@@ -38,6 +38,7 @@ function getStickers($type) {
     $stickers = [
         "deny_access" => [83411],
         "confused" => [13633, 80909, 94649, 106235],
+        "error" => [100364],
     ];
     $typed = $stickers[$type] ?? $stickers["confused"];
     return $typed[rand(0, count($typed) - 1)];
@@ -58,8 +59,13 @@ function sendMessage($peer_id, $object, $uqId) {
     $isMom = ($me == PEER_MOM || $peer_id == PEER_MOM);
     $bot_names = ["летяга", "бот"];
     $bot_name = "летяга";
-    $message = Fly::checkMessage($object);
-    $text = trim($object["text"]);
+    $text = trim($object['text']);
+    $line = mb_strtolower(mb_ereg_replace('[^а-яА-ЯЁё\w\d\-\[\]\|]+', '', $text));
+    if ($line == "отмена" && !empty(Fly::getReply($object))) {
+        $message = Fly::cancelAct($object);
+    } else {
+        $message = Fly::checkMessage($object);
+    }
     if ($message == ""
         && preg_match('/^' . "(" . join("|", $bot_names) . ")" . '/iu', $text)
         && in_array(getCommand($text), $bot_names)) {
@@ -86,9 +92,10 @@ function sendMessage($peer_id, $object, $uqId) {
                 } else {
                     $user = getUserInfo($vkId);
                     $a = $user["sex"] == 1 ? "а" : "";
-                    $exists = DB::getRow("SELECT name, cat_id FROM cats_fly WHERE id=$vkId");
-                    if (!is_null($exists)) {
-                        $message = "[id{$vkId}|$user[first_name] $user[last_name]] уже существует - это $exists[name] [$exists[cat_id]]";
+                    $exists = Fly::getCats($vkId)[$vkId] ?? [];
+                    $message = json_encode($exists);
+                    if (!empty($exists)) {
+                        $message = "[id{$vkId}|$user[first_name] $user[last_name]] уже существует - это $exists[name] [$exists[id]]";
                     } else {
                         $textSplit = explode(" ", trim($text));
                         $catId = intval(array_pop($textSplit));
@@ -96,113 +103,91 @@ function sendMessage($peer_id, $object, $uqId) {
                         if (!$catName || $catId < 1) {
                             $message = "Правильный формат - 'Имя 123', у вас '$text'???";
                         } else {
-                            $catName = DB::escape($catName);
-                            $existingCatName = DB::getRow("SELECT id FROM cats_fly WHERE name='$catName'", 0);
-                            if ($existingCatName > 0) {
-                                $userExists = getUserInfo($existingCatName, "ins");
-                                $message = "Это имя уже занято [id{$existingCatName}|$userExists[first_name] $userExists[last_name]]";
-                            } else {
-                                DB::q("INSERT INTO cats_fly SET id=$vkId, name='$catName'");
+                            $invite_date = new DateTime();
+                            $invite_date->setTime(0, 0, 0);
+                            $trial_end_date = new DateTime();
+                            $trial_end_date->modify('+14 day');
+                            $trial_end_date->setTime(23, 59, 59);
+                            $data = [
+                                "vk_name" => "$user[first_name] $user[last_name]",
+                                "vk_id" => $vkId,
+                                "cat_name" => $catName,
+                                "id" => $catId,
+                                "prefers_nickname" => false,
+                                "invite_date" => $invite_date,
+                                "trial_end_date" => $trial_end_date,
+                                "access_level" => 0,
+                            ];
+                            $result = Sheets::addMember($data);
+                            if ($result > 0) {
                                 $message = "[id$user[id]|$user[first_name] $user[last_name]] добавлен$a! Это $catName [$catId]";
+                            } else {
+                                $sticker_id = getStickers("error");
                             }
                         }
                     }
                 }
             }
-        } elseif ($command == "дай") {
-            $command = getCommand($text);
-            preg_match('/^\[id(\d+)\|/iu', $command, $data);
-            $vkId = $data[1] ?? 0;
-            $self = false;
-            if ($vkId < 1) {
-                $text = trim($command . " " . $text);
-                $types = join("|", ["имя", "доступ"]);
-                preg_match("/([А-ЯЁа-яё][а-яё]+( [А-ЯЁа-яё][а-яё]+)?|\d+)\s+(($types).*)/u", $text, $data);
-                $catIdOrName = $data[1] ?? "";
-                $text = $data[3] ?? "";
-                if (is_numeric($catIdOrName)) {
-                    $vkId = DB::getVal("SELECT id FROM cats_fly WHERE cat_id=" . intval($catIdOrName), -1);
+        } elseif ($command == "стат") {
+            preg_match('/([А-ЯЁ][а-яё]+( [А-ЯЁ][а-яё]+)?)?\s*(|весь|за \d+\.\d+(\.\d+)?\s*-\s*\d+\.\d+(\.\d+)?)$/u', trim($text), $matches);
+            $catName = $matches[1] ?? "";
+            $catSelf = Fly::getCats($me)[$me] ?? [];
+            $catSelfName = $catSelf["name"] ?? "";
+            if (!$catName) {
+                $cat = Fly::getCats($me)[$me] ?? [];
+                $catName = $cat["name"] ?? "";
+            } else {
+                $catName = formatCatName($catName);
+                $cat = Sheets::getMembersBy(["name" => $catName])[0];
+                $catName = $cat["name"] ?? "";
+            }
+            if ($catSelfName != $catName && !checkAccess($me, "Глава")) {
+                $sticker_id = getStickers("deny_access");
+            }
+            if (!$catName) {
+                $message = !empty($matches[1]) ? (formatCatName($matches[1]) . " не найден") : "Ты кто такой вообще?";
+            } elseif ($sticker_id < 1) {
+                $period = $matches[3] ?? "";
+                $message = "Активность скалолаза $catName";
+                $invite_date = DateTime::createFromFormat('d.m.Y H:i:s', $cat["invite_date"] . " 00:00:00");
+                if ($period == "весь") {
+                    $from = DateTime::createFromFormat('d.m.Y H:i:s', "01.01.1970 00:00:00");
+                    if ($from < $invite_date) $from = $invite_date;
+                    $to = new DateTime();
+                    $message .= " за всё время";
+                } elseif ($period != "") {
+                    preg_match('/за (\d+\.\d+(\.\d+)?)\s*-\s*(\d+\.\d+(\.\d+)?)/u', $period, $matches);
+                    $interval = explode('-', $period);
+                    foreach ($interval as $key => $date) {
+                        $date = mb_ereg_replace('[^\d.]+', '', $date);
+                        $date = explode('.', $date);
+                        if (count($date) > 2 && $date[2]) {
+                            $year = $date[2];
+                            if (strlen($year) < 4) {
+                                $year = '20' . $year;
+                                $date[2] = $year;
+                            }
+                        } else {
+                            $date[2] = date("Y");
+                        }
+                        $interval[$key] = join('.', $date);
+                    }
+                    $from = DateTime::createFromFormat('d.m.Y H:i:s', $interval[0] . " 00:00:00");
+                    if ($from < $invite_date) $from = $invite_date;
+                    $to = DateTime::createFromFormat('d.m.Y H:i:s', $interval[1] . " 23:59:59");
+                    $now = new DateTime();
+                    $format = $from->format('Y') == $now->format('Y') ? 'd.m' : 'd.m.y';
+                    $message .= " за " . $from->format($format) . "-" . $to->format($format);
                 } else {
-                    $catName = DB::escape(mb_strtolower($catIdOrName));
-                    $vkId = DB::getVal("SELECT id FROM cats_fly WHERE LOWER(name)='$catName'", -1);
+                    $from = new DateTime('first day of this month');
+                    $to = new DateTime('last day of this month');
+                    if ($from < $invite_date) $from = $invite_date;
+                    $message .= " за этот месяц";
                 }
-            } else {
-                $vkId = DB::getVal("SELECT id FROM cats_fly WHERE id=" . $vkId, -1);
-            }
-
-            if ($vkId < 1) {
-                $self = true;
-                $vkId = DB::getVal("SELECT id FROM cats_fly WHERE id=$me", -1);
-            }
-
-            $catInfo = DB::getRow("SELECT * FROM cats_fly WHERE id=$vkId");
-            if ($vkId < 1 || !$catInfo) {
-                $sticker_id = getStickers("confused");
-            } else {
-                $command = getCommand($text);
-                if ($command == "имя") {
-                    if (!$isMom && !$self && !checkAccess($me, "Глава")) {
-                        $sticker_id = getStickers("deny_access");
-                    } else {
-                        $name = formatCatName($text);
-                        if ($name == "") {
-                            $message = "Какое???";
-                        } elseif (!preg_match('/^[А-ЯЁ][а-яё]+( [А-ЯЁ][а-яё]+)?$/u', $name)) {
-                            $message = "Что такое '$name'???";
-                        } else {
-                            if ($catInfo["name"] == $name) {
-                                $message = "У него и так";
-                                if ($self) {
-                                    $message = "У вас и так";
-                                }
-                                $message .= " имя $name???";
-                            } else {
-                                DB::q("UPDATE cats SET name='$name' WHERE id=$vkId");
-                                $message = "$catInfo[name] [$catInfo[cat_id]] теперь зовут $name!";
-                                if ($self) {
-                                    $message = "Теперь вас зовут $name!";
-                                }
-                            }
-                        }
-                    }
-                } elseif ($command == "доступ") {
-                    if (!$isMom && !checkAccess($me, "Глава")) {
-                        $sticker_id = getStickers("deny_access");
-                    } else {
-                        $level = intval($text);
-                        $level_str = array_flip(ACCESS_LEVELS_TYPES)[$level] ?? "???";
-                        $leader_level = ACCESS_LEVELS_TYPES["Глава"];
-
-                        $his_level = $catInfo["access_level"];
-                        if ($self) { // Смена себе
-                            if ($isMom || checkAccess($me, "Глава")) { // Автор глава (высший доступ)
-                                if ($isMom || $level <= $leader_level) { // Автор ставит существующий доступ
-                                    $leaderCount = DB::getVal("SELECT COUNT(id) FROM cats WHERE access_level=$leader_level");
-                                    if ($leaderCount > 1 || $level >= $leader_level) {
-                                        DB::q("UPDATE cats SET access_level=$level WHERE id=$vkId");
-                                        $message = "Теперь ваш доступ - $level_str ($level)";
-                                    } else {
-                                        $message = "Снимать с себя доступ главы запрещено, если больше никого с таким доступом нет.";
-                                    }
-                                } else {
-                                    $message = "Такого доступа не существует АЛО???";
-                                }
-                            } else {
-                                $message = $self ? "Менять себе доступ" : "Менять доступ на главу отряда";
-                                $message .= " может только глава отряда";
-                            }
-                        } elseif (!$isMom && (!checkAccess($me, $level) || !checkAccess($me, $his_level))) {
-                            // Пытается выдать кому-то доступ выше собственного
-                            $sticker_id = getStickers("deny_access");
-                        } else {
-                            if ($catInfo["access_level"] == $level) {
-                                $message = "У " . ($self ? "вас" : "него") . " уже доступ $level_str ($level)...";
-                            } else {
-                                DB::q("UPDATE cats SET access_level=$level WHERE id=$vkId");
-                                $message = "Теперь У " . ($self ? "вас" : $catInfo["name"]) . " доступ - $level_str ($level).";
-                            }
-                        }
-                    }
+                if ($from > $to) {
+                    $message = "Всё нормально у тебя с датами?";
+                } else {
+                    $message .= ":\n" . Fly::getActivity($cat, $from, $to);
                 }
             }
         }

@@ -5,6 +5,7 @@ require_once __DIR__ . '/config.php';
 class Sheets {
     private static $spreadsheet_id = SPREADSHEET_ID;
     private static $spreadsheet_stats_name = SPREADSHEET_STATS_NAME;
+    private static $spreadsheet_members_name = SPREADSHEET_MEMBERS_NAME;
 
     private static function getService() {
         $client = new \Google_Client();
@@ -40,13 +41,130 @@ class Sheets {
             0  => ['type' => 'Сбор с ущелья',                   'points' => 6 + 3 * intval($extra)],
             1  => ['type' => 'Сбор с уступов',                  'points' => 6 + 2 * intval($extra)],
             2  => ['type' => 'Сбор отдельных ресурсов',         'points' => 3 + intval($extra)],
-            3  => ['type' => 'Транспортировка перьев',          'points' => 3 + ($hidden ? 3 : 0)],
+            3  => ['type' => 'Транспортировка перьев',          'points' => 3 + round(floatval($hidden))],
             4  => ['type' => 'Транспортировка соплеменника',    'points' => 2 + round(floatval($hidden))],
         ];
         return $legend[$num] ?? 0;
     }
+    public static function getMembersBy($search = []) {
+        $service = Sheets::getService();
+        $sheetId = Sheets::getSheetId(self::$spreadsheet_id, self::$spreadsheet_members_name, $service);
+        if ($sheetId == -1) {
+            return -1;
+        }
+        $range = self::$spreadsheet_members_name . "!A2:J";
+        $response = $service->spreadsheets_values->get(self::$spreadsheet_id, $range);
+        $values = $response->getValues();
 
+        $conditions = [];
+        foreach ($search as $key => $searchValues) {
+            $realKey = [
+                    "vk_id" => 1,
+                    "name" => 2,
+                    "id" => 3,
+                    "nickname" => 4,
+                ][$key] ?? 0;
+            $conditions[$realKey] = $searchValues;
+        }
 
+        $data = [];
+        if (!empty($values)) {
+            foreach ($values as $row) {
+                $isOk = true;
+                foreach ($conditions as $key => $cond) {
+                    if (is_array($cond)) {
+                        $isCondOk = in_array($row[$key], $cond);
+                    } elseif (is_callable($cond)) {
+                        $isCondOk = $cond($row[$key]);
+                    } else {
+                        $isCondOk = $row[$key] == $cond;
+                    }
+                    $isOk = $isOk && $isCondOk;
+                }
+                if ($isOk) {
+                    $data[] = [
+                        "vk_id" => $row[1],
+                        "name" => $row[2],
+                        "id" => $row[3],
+                        "nickname" => $row[4],
+                        "prefers_nickname" => $row[5] == "TRUE",
+                        "invite_date" => $row[6],
+                        "trial_end_date" => $row[7],
+                        "access_level" => $row[8],
+                    ];
+                }
+            }
+        }
+        return $data;
+    }
+    public static function getMember($vkId = 0, $catId = 0) {
+        $service = Sheets::getService();
+        $sheetId = Sheets::getSheetId(self::$spreadsheet_id, self::$spreadsheet_members_name, $service);
+        if ($sheetId == -1) {
+            return -1;
+        }
+
+        $range = self::$spreadsheet_members_name . "!A2:J";
+        $response = $service->spreadsheets_values->get(self::$spreadsheet_id, $range);
+        $values = $response->getValues();
+        $data = [];
+        $column = 1;
+        $value = $vkId;
+        if (!$value) {
+            $column = 3;
+            $value = $catId;
+        }
+        if (!empty($values)) {
+            foreach ($values as $key => $row) {
+                $id = $row[$column];
+                if ($id == $value) {
+                    $data = $row;
+                    break;
+                }
+            }
+        }
+        if (empty($data)) return -2;
+        return [
+            "vk_id" => $data[1],
+            "name" => $data[2],
+            "id" => $data[3],
+            "nickname" => $data[4],
+            "prefers_nickname" => $data[5] == "TRUE",
+            "invite_date" => $data[6],
+            "trial_end_date" => $data[7],
+            "access_level" => $data[8],
+        ];
+    }
+    public static function addMember($info) {
+        $service = Sheets::getService();
+        $sheetId = Sheets::getSheetId(self::$spreadsheet_id, self::$spreadsheet_members_name, $service);
+        if ($sheetId == -1) {
+            return -1;
+        }
+        $range = self::$spreadsheet_members_name . "!A2:J";
+        $conf = ["valueInputOption" => "USER_ENTERED"];
+        $rows = [[
+            $info["vk_name"],
+            $info["vk_id"],
+            $info["cat_name"],
+            $info["id"],
+            "",
+            $info["prefers_nickname"],
+            Sheets::dateToSerial($info["invite_date"]),
+            Sheets::dateToSerial($info["trial_end_date"]),
+            $info["access_level"],
+        ]];
+        try {
+            $postBody = new Google_Service_Sheets_ValueRange([
+                "values" => $rows
+            ]);
+            $service->spreadsheets_values->append(self::$spreadsheet_id, $range, $postBody, $conf);
+            return 1;
+        } catch (Exception $e) {
+            print_r("WRITE ERROR ". $e->getMessage());
+            return -1;
+        }
+    }
     public static function write($info, $force_return_array = false) {
         $sheetId = Sheets::getSheetId(self::$spreadsheet_id, self::$spreadsheet_stats_name);
         if ($sheetId == -1) {
@@ -136,5 +254,100 @@ class Sheets {
             return $return_points[0];
         }
         return $return_points;
+    }
+
+    private static function findByUnique($unique, $service = null) {
+        if (!isset($service)) {
+            $service = Sheets::getService();
+        }
+        $range = self::$spreadsheet_stats_name . "!A:F";
+        $response = $service->spreadsheets_values->get(self::$spreadsheet_id, $range);
+        $values = $response->getValues();
+        $cell_num = 0; // Ячейка, в которой лежит отчёт
+        $data = [];
+        if (!empty($values)) {
+            foreach ($values as $key => $row) {
+                $id = end($row);
+                if ($id == $unique) {
+                    $cell_num = $key;
+                    $data = $row;
+                    break;
+                }
+            }
+        }
+        return [
+            "key" => $cell_num,
+            "data" => $data,
+        ];
+    }
+    public static function remove($unique) {
+        $service = Sheets::getService();
+        $data = Sheets::findByUnique($unique, $service);
+
+        if ($data["key"] == 0) {
+            return [
+                "status" => "error",
+                "data" => 1
+            ];
+        }
+        $sheetId = Sheets::getSheetId(self::$spreadsheet_id, self::$spreadsheet_stats_name, $service);
+        $request = new Google_Service_Sheets_BatchUpdateSpreadsheetRequest([
+            'requests' => [
+                new Google_Service_Sheets_Request([
+                    'deleteDimension' => [
+                        'range' => [
+                            'sheetId' => $sheetId,
+                            'dimension' => "ROWS",
+                            'startIndex' => '' . $data["key"],
+                            'endIndex' => '' . ($data["key"] + 1)
+                        ]
+                    ]
+                ]),
+            ]
+        ]);
+
+        try {
+            $service->spreadsheets->batchUpdate(self::$spreadsheet_id, $request);
+        } catch (Exception $e) {
+            exit($e->getMessage());
+        }
+
+        return [
+            "status" => "success",
+            "data" => $data["data"],
+        ];
+    }
+    public static function getStatistics($who, $from, $to) {
+        $service = Sheets::getService();
+
+        $range = self::$spreadsheet_stats_name . "!A:F";
+        $response = $service->spreadsheets_values->get(self::$spreadsheet_id, $range);
+        $values = $response->getValues();
+        $array = [];
+
+        if (!empty($values)) {
+            foreach ($values as $row) {
+                $name = trim($row[0]);
+                if ($name == $who || $who === 0) {
+                    $date = DateTime::createFromFormat('d.m.Y H:i:s', $row[1] . ':00');
+                    if ($date && $date->getTimestamp() >= $from->getTimestamp() && $date->getTimestamp() <= $to->getTimestamp()) {
+                        if (!isset($array[$name])) {
+                            $array[$name] = [];
+                        }
+                        $array[$name][] = [
+                            "type" => trim($row[2]),
+                            "date" => $row[1],
+                            "points" => floatval(str_replace(',', '.', $row[3])),
+                            "extra" => trim($row[4]),
+                            "msg_id" => $row[5],
+                        ];
+                    }
+                }
+            }
+        }
+        if ($who === 0) {
+            return $array;
+        }
+        return array_pop($array);
     }
 }
