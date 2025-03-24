@@ -86,7 +86,7 @@ class Fly {
         }
         $return .= "\n";
         $return .= "Паутины с ущелья: " . ($result["Сбор с ущелья"]["extra"] ?? 0) . "\n";
-        $return .= "Мха с уступов: " . ($result["Сбор с ущелья"]["extra"] ?? 0) . "\n";
+        $return .= "Мха с уступов: " . ($result["Сбор с уступов"]["extra"] ?? 0) . "\n";
         if (isset($tSeparate)) {
             $return .= "Ресурсов с отдельных сборов: " . $tSeparate["extra"] . "\n";
         }
@@ -107,18 +107,24 @@ class Fly {
         foreach ($users as $user) {
             $preferredName = $user['prefers_nickname'] && $user['nickname'] ? $user['nickname'] : $user['name'];
             $data[$user["vk_id"]] = [
+                "vk_name" => $user["vk_name"],
+                "vk_id" => $user["vk_id"],
                 "id" => $user["id"],
                 "name" => $user["name"],
+                "nickname" => $user["nickname"],
+                "prefers_nickname" => $user["prefers_nickname"],
                 "preferred_name" => $preferredName,
                 "invite_date" => $user["invite_date"],
-                "access_level" => $user["access_level"]
+                "trial_end_date" => $user["trial_end_date"],
+                "access_level" => $user["access_level"],
+                "num" => $user["num"],
             ];
         }
         return $data;
     }
     private static function sbor($object) {
         $ex = explode('.', str_replace([',', "\n"], '.', trim($object['text'])));
-        $ex_type = trim(array_shift($ex));
+        $ex_type = mb_strtolower(trim(array_shift($ex)));
         $type = "";
         $num = 0;
         if (mb_strpos($ex_type, "сбор с ущелья") !== false) {
@@ -131,8 +137,20 @@ class Fly {
             $num = 2;
         }
         if ($type == "") return "";
-        $count = intval(mb_ereg_replace('\D+', '', array_pop($ex)));
-        if ($count < 1) return "Количество ресурсов не указано! Перепиши отчёт";
+        $count = intval(mb_ereg_replace('\D+', '', ($ex[count($ex) - 1])));
+        $hidden = 0;
+        if ($num == 1 && $count > 0) {
+            $count = 0;
+            foreach ($ex as $ex_item) {
+                if (mb_strpos($ex_item, "обычн") !== false) {
+                    $count = intval(mb_ereg_replace('\D+', '', $ex_item));
+                } elseif (mb_strpos($ex_item, "водян") !== false) {
+                    $hidden = intval(mb_ereg_replace('\D+', '', $ex_item));
+                    $count += $hidden;
+                }
+            }
+        }
+        if ($count < 0) return "Количество ресурсов не может быть отрицательным!";
         if (count($object["attachments"]) < 1) {
             return "Нет скриншота истории и рта! Перепиши отчёт";
         }
@@ -143,6 +161,7 @@ class Fly {
             'cat' => $cat['id'],
             'date' => Fly::getDate($object),
             'extra' => $count,
+            'hidden' => $hidden,
             'msg_id' => $object['peer_id'] . "_" . $object['conversation_message_id']
         ]];
         $points = Sheets::write($data);

@@ -39,7 +39,7 @@ class Sheets {
     private static function getInfo($num, $hidden, $extra) {
         $legend = [
             0  => ['type' => 'Сбор с ущелья',                   'points' => 6 + 3 * intval($extra)],
-            1  => ['type' => 'Сбор с уступов',                  'points' => 6 + 2 * intval($extra)],
+            1  => ['type' => 'Сбор с уступов',                  'points' => 6 + 2 * (intval($extra) - intval($hidden)) + intval($hidden)],
             2  => ['type' => 'Сбор отдельных ресурсов',         'points' => 3 + intval($extra)],
             3  => ['type' => 'Транспортировка перьев',          'points' => 3 + round(floatval($hidden))],
             4  => ['type' => 'Транспортировка соплеменника',    'points' => 2 + round(floatval($hidden))],
@@ -69,7 +69,7 @@ class Sheets {
 
         $data = [];
         if (!empty($values)) {
-            foreach ($values as $row) {
+            foreach ($values as $rowNum => $row) {
                 $isOk = true;
                 foreach ($conditions as $key => $cond) {
                     if (is_array($cond)) {
@@ -83,6 +83,7 @@ class Sheets {
                 }
                 if ($isOk) {
                     $data[] = [
+                        "vk_name" => $row[0],
                         "vk_id" => $row[1],
                         "name" => $row[2],
                         "id" => $row[3],
@@ -91,6 +92,7 @@ class Sheets {
                         "invite_date" => $row[6],
                         "trial_end_date" => $row[7],
                         "access_level" => $row[8],
+                        "num" => $rowNum,
                     ];
                 }
             }
@@ -110,6 +112,7 @@ class Sheets {
         $data = [];
         $column = 1;
         $value = $vkId;
+        $num = -1;
         if (!$value) {
             $column = 3;
             $value = $catId;
@@ -119,12 +122,14 @@ class Sheets {
                 $id = $row[$column];
                 if ($id == $value) {
                     $data = $row;
+                    $num = $key;
                     break;
                 }
             }
         }
         if (empty($data)) return -2;
         return [
+            "vk_name" => $data[0],
             "vk_id" => $data[1],
             "name" => $data[2],
             "id" => $data[3],
@@ -133,6 +138,7 @@ class Sheets {
             "invite_date" => $data[6],
             "trial_end_date" => $data[7],
             "access_level" => $data[8],
+            "num" => $num,
         ];
     }
     public static function addMember($info) {
@@ -165,6 +171,45 @@ class Sheets {
             return -1;
         }
     }
+    public static function editMember($cat, $data) {
+        if (!isset($cat["num"])) {
+            return -3;
+        }
+        $service = Sheets::getService();
+        $sheetId = Sheets::getSheetId(self::$spreadsheet_id, self::$spreadsheet_members_name, $service);
+        if ($sheetId == -1) {
+            return -1;
+        }
+        foreach ($cat as $key => $catInfo) {
+            if (isset($data[$key])) {
+                $cat[$key] = $data[$key];
+            }
+        }
+        $row = [
+            $cat["vk_name"],
+            $cat["vk_id"],
+            $cat["name"],
+            $cat["id"],
+            $cat["nickname"],
+            $cat["prefers_nickname"],
+            $cat["invite_date"],
+            $cat["trial_end_date"],
+            $cat["access_level"],
+        ];
+        $conf = ["valueInputOption" => "USER_ENTERED"];
+        $num = $cat["num"] + 2; // +1 потому что отсчёт ключа с 0, +1 потому что отсчёт диапазона с 2 ряда, а не 1
+        $range = self::$spreadsheet_members_name . "!A$num:J$num";
+        try {
+            $postBody = new Google_Service_Sheets_ValueRange([
+                "values" => [$row]
+            ]);
+            $service->spreadsheets_values->update(SPREADSHEET_ID, $range, $postBody, $conf);
+            return 1;
+        } catch (Exception $e) {
+            return -2;
+        }
+    }
+
     public static function write($info, $force_return_array = false) {
         $sheetId = Sheets::getSheetId(self::$spreadsheet_id, self::$spreadsheet_stats_name);
         if ($sheetId == -1) {

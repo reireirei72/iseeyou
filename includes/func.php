@@ -137,3 +137,7 @@ function stringToRandomId($str) {
 
     return $hash;
 }
+
+function array_sample($array) {
+    return $array[rand(0, count($array) - 1)];
+}
