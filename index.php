@@ -373,7 +373,7 @@ function send_message($peer_id, $object) {
             $who = $me;
             $hour = intval(date('H'));
             $minute = intval(date('i'));
-            if (in_array($hour, [11, 15, 16]) && $minute >= 40 && $minute < 55 || $isMom) {
+            if (in_array($hour, [11, 15, 16]) && $minute >= 40 && $minute < 55) {
                 $sticker_id = 86521;
 //                sendReaction($peer_id, $object["conversation_message_id"], 8);
                 // вк говнина и не любит отправку реакций, либо я говнина и не умею делать апи запросы. короче удачи

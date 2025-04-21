@@ -5,6 +5,7 @@ require_once __DIR__ . '/config.php';
 class Sheets {
     private static $spreadsheet_id = SPREADSHEET_ID;
     private static $flowers_spreadsheet_id = FLOWERS_SPREADSHEET_ID;
+    private static $memo_spreadsheet_stats_name = MEMO_SPREADSHEET_STATS_NAME;
     private static $spreadsheet_stats_name = SPREADSHEET_STATS_NAME;
     private static $flowers_spreadsheet_stats_name = FLOWERS_SPREADSHEET_STATS_NAME;
 
@@ -343,6 +344,86 @@ class Sheets {
             "status" => "success",
             "data" => $data["data"],
         ];
+    }
+
+    public static function writeMemo($info) {
+        $sheetId = Sheets::getSheetId(self::$spreadsheet_id, self::$memo_spreadsheet_stats_name);
+        if ($sheetId == -1) {
+            return -1;
+        }
+        $rows_raw = [];
+        foreach ($info as $item) {
+            if (!isset($item['real_date'])) {
+                $item['real_date'] = $item['date'];
+            }
+            $values = [
+                intval($item['cat']),
+                $item['date'],
+                $item['type'],
+                $item['type_extra'],
+                intval($item['whom']),
+            ];
+            $rows_raw[] = $values;
+        }
+        $date_format = [];
+        $rows = [];
+        foreach ($rows_raw as $row) {
+            $cells = [];
+            foreach ($row as $key => $cell) {
+                $new_cell = [
+                    "userEnteredValue" => [],
+                    "userEnteredFormat" => []
+                ];
+                $value_type = (gettype($cell) == "integer" || gettype($cell) == "double") ? "numberValue" : "stringValue";
+                if ($cell instanceof DateTime) {
+                    $pattern = $date_format[$key] ?? "dd.mm.yyyy hh:mm";
+                    $value_type = "numberValue";
+                    $cell = Sheets::dateToSerial($cell);
+                    $new_cell["userEnteredFormat"]["numberFormat"] = ["type" => "DATE", "pattern" => $pattern];
+                }
+                $new_cell["userEnteredFormat"]["horizontalAlignment"] = (($value_type == "stringValue") ? "LEFT" : "CENTER");
+                $new_cell["userEnteredValue"] = [$value_type => $cell];
+                $cells[] = $new_cell;
+            }
+            $rows[] = ['values' => $cells];
+        }
+
+        $requests = [
+            new Google_Service_Sheets_Request([
+                'insertDimension' => [
+                    'range' => [
+                        'sheetId' => $sheetId,
+                        'dimension' => "ROWS",
+                        'startIndex' => '1',
+                        'endIndex' => '' . (count($rows) + 1)
+                    ],
+                    'inheritFromBefore' => true
+                ]
+            ]),
+            new Google_Service_Sheets_Request([
+                'updateCells' => [
+                    'rows' => $rows,
+                    'fields' => '*',
+                    'range' => [
+                        'sheetId' => $sheetId,
+                        'startRowIndex' => 1,
+                        'endRowIndex' => (count($rows) + 1),
+                        'startColumnIndex' => 0
+                    ],
+                ]
+            ])
+        ];
+
+        $request = new Google_Service_Sheets_BatchUpdateSpreadsheetRequest([
+            'requests' => $requests
+        ]);
+
+        try {
+            Sheets::getService()->spreadsheets->batchUpdate(self::$spreadsheet_id, $request);
+        } catch (Exception $e) {
+            exit($e->getMessage());
+        }
+        return count($rows);
     }
     public static function writeFlowerStat($info) {
         $sheetId = Sheets::getSheetId(self::$flowers_spreadsheet_id, self::$flowers_spreadsheet_stats_name);

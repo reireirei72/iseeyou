@@ -58,7 +58,7 @@ class Peck {
                 ];
             }
             $result[$key]["points"] += $points;
-            if ($type == "Чистка ботов КсД") {
+            if (in_array($type, ["Чистка ботов КсД", "Перебор камней"])) {
                 $result[$key]["extra"] += intval($row["extra"]);
             } elseif (in_array($type, array_keys($distinct))) {
                 if (!in_array($row["date"], $distinct[$type])) {
@@ -118,13 +118,15 @@ class Peck {
             "Помощь травнику" => "Помощь травнику",
             "Поимка мышей" => "Поручения по ловле мышей",
             "Наполнение мха" => "Наполнение мха",
-            "Перенос ресурсов" => "Участие в переносе",
-            "Перенос с мели" => "Перенос с мели",
+            "Перебор камней" => "Перебор камней",
+            "Перенос ресурсов" => "Участие в переносе в ПсТ",
+            "Перенос с мели" => "Участие в переносе с мели",
             "Обход" => "Обходы номерных",
             "Поручение главы/целителя" => "Поручения",
             "Участие в ЧП" => "Участие в ЧП",
             "Выдача трав" => "Выдача трав",
             "Выдача костоправа" => "Выдача костоправов",
+            "Обновление архива памяток" => "Обновление архива памяток",
         ];
         list($result, $total_points, $extra_points, $hasAny) = Peck::mapCatStats($data, $names, $norm);
         $return = "Активность котика $cat_name за $period"
@@ -143,9 +145,10 @@ class Peck {
                 ];
             if ($now["points"] || in_array($key, ["Дозор в ПЦ", "Дозор на ГБ"]) || $norm < 1 && $key == "Дозор на локации с травами") {
                 if (in_array($key, ["Дозор в ПЦ", "Дозор на ГБ", "Дозор на локации с травами", "Сбор с ОТ",
-                    "Сбор с МЗ", "Квест на ОС", "Участие в травнике", "Чистка ботов КсД"])) {
+                    "Сбор с МЗ", "Квест на ОС", "Участие в травнике", "Чистка ботов КсД", "Перебор камней"])) {
                     $extra_extra = [
                             "Чистка ботов КсД" => " мусора",
+                            "Перебор камней" => " камней",
                         ][$key] ?? "";
                     $return .= "\n$name: $now[extra]$extra_extra";
                     if (isset($normStats[$key])) {
@@ -549,8 +552,84 @@ class Peck {
             return Peck::taskUpdateArchive($object) ?: "";
         } elseif (preg_match('/^перебрала? камни/iu', $text)) {
             return Peck::stoneCheck($object) ?: "";
+        } elseif (preg_match('/^[А-Яа-яЁё]+( [А-Яа-яЁё]+)? \[\d+],? с правилами поведения в пц ознакомлен/iu', $text)) {
+            return Peck::giveMemo($object) ?: "";
         }
         return "";
+    }
+    private static function giveMemo($object) {
+        if (!checkAccess($object['from_id'], 100)) {
+            return "";
+        }
+        $cat = getCats($object['from_id'])[$object['from_id']] ?? [];
+        if (empty($cat)) return "";
+        $text = explode("\n", $object["text"]);
+        $data = [];
+        $report_date = new DateTime();
+        $report_date->setTimestamp($object['date']);
+        foreach ($text as $line) {
+            preg_match('/\[(\d+)],? с правилами поведения в пц ознакомлена?,(.*)/iu', $line, $matches);
+            $whom = $matches[1] ?? "";
+            $type = mb_strtolower(trim($matches[2] ?? ""));
+            preg_match('/\((.*)\)/iu', $type, $matches);
+            $type_extra = trim($matches[1] ?? "");
+            $type_cleaned = trim(mb_ereg_replace('\(.*\)', '', $type));
+            if (!in_array($type_cleaned, ["кашель", "ушибы", "травмы от утопления", "отравление", "боевые раны", "грязь", "ныряние"])) {
+                $message = "Памятки по таким увечьям ($type_cleaned) не существует";
+                $corrected = "";
+                if (preg_match('/травл/iu', $type_cleaned)) {
+                    $corrected = "отравление";
+                } elseif (preg_match('/утоп/iu', $type_cleaned)) {
+                    $corrected = "травмы от утопления";
+                } elseif (preg_match('/раны/iu', $type_cleaned)) {
+                    $corrected = "боевые раны";
+                } elseif (preg_match('/ушиб/iu', $type_cleaned)) {
+                    $corrected = "ушибы";
+                } elseif (preg_match('/ныр/iu', $type_cleaned)) {
+                    $corrected = "ныряние";
+                }
+                if ($corrected) {
+                    $message .= ". Возможно, вы имели в виду \"$corrected\"?";
+                }
+                return $message;
+            }
+            if ($type_extra) {
+                $types_extra = explode(",", $type_extra);
+                $has = [];
+                foreach ($types_extra as $word) {
+                    $word = trim($word);
+                    if (!in_array($word, ["травмы от утопления", "отравление", "раны"])) {
+                        $message = "Таких увечий ($word) при нырянии не существует";
+                        $corrected = "";
+                        if (preg_match('/травл/iu', $word)) {
+                            $corrected = "отравление";
+                        } elseif (preg_match('/утоп/iu', $word)) {
+                            $corrected = "травмы от утопления";
+                        }
+                        if ($corrected) {
+                            $message .= ". Возможно, вы имели в виду \"$corrected\"?";
+                        }
+                        return $message;
+                    }
+                    if (in_array($word, $has)) {
+                        return "У вас повторяется одно и то же увечье на ныряниях два раза подряд ($word)";
+                    }
+                    $has[] = $word;
+                }
+            }
+            $data[] = [
+                "cat" => $cat["id"],
+                "type" => $type_cleaned,
+                "type_extra" => $type_extra,
+                "whom" => $whom,
+                "date" => $report_date,
+            ];
+        }
+        $response = Sheets::writeMemo($data);
+        if ($response < 1) {
+            return "Что-то не так зовите маму...";
+        }
+        return "Успешно выдано " . declination($response, ['памятка', 'памятки', 'памяток']) . ", " . $cat["name"] . "!";
     }
     private static function stoneCheck($object) {
         $cat = getCats($object['from_id'])[$object['from_id']] ?? [];
