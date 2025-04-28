@@ -41,8 +41,9 @@ class Sheets {
             0  => ['type' => 'Сбор с ущелья',                   'points' => 6 + 3 * intval($extra)],
             1  => ['type' => 'Сбор с уступов',                  'points' => 6 + 2 * (intval($extra) - intval($hidden)) + intval($hidden)],
             2  => ['type' => 'Сбор отдельных ресурсов',         'points' => 3 + intval($extra)],
-            3  => ['type' => 'Транспортировка перьев',          'points' => 3 + round(floatval($hidden))],
-            4  => ['type' => 'Транспортировка соплеменника',    'points' => 2 + round(floatval($hidden))],
+            3  => ['type' => 'Транспортировка соплеменника',    'points' => 2 + round(floatval($hidden))],
+            4  => ['type' => 'Транспортировка перьев',          'points' => 2 * round(floatval($hidden))],
+            5  => ['type' => 'Охрана перьев',                   'points' => 2 * floor(floatval($hidden) / 15)],
         ];
         return $legend[$num] ?? 0;
     }
@@ -52,7 +53,7 @@ class Sheets {
         if ($sheetId == -1) {
             return -1;
         }
-        $range = self::$spreadsheet_members_name . "!A2:J";
+        $range = self::$spreadsheet_members_name . "!A2:K";
         $response = $service->spreadsheets_values->get(self::$spreadsheet_id, $range);
         $values = $response->getValues();
 
@@ -63,6 +64,7 @@ class Sheets {
                     "name" => 2,
                     "id" => 3,
                     "nickname" => 4,
+                    "is_responsible" => 10,
                 ][$key] ?? 0;
             $conditions[$realKey] = $searchValues;
         }
@@ -92,6 +94,7 @@ class Sheets {
                         "invite_date" => $row[6],
                         "trial_end_date" => $row[7],
                         "access_level" => $row[8],
+                        "is_responsible" => $row[10] == "TRUE",
                         "num" => $rowNum,
                     ];
                 }
@@ -106,7 +109,7 @@ class Sheets {
             return -1;
         }
 
-        $range = self::$spreadsheet_members_name . "!A2:J";
+        $range = self::$spreadsheet_members_name . "!A2:K";
         $response = $service->spreadsheets_values->get(self::$spreadsheet_id, $range);
         $values = $response->getValues();
         $data = [];
@@ -138,6 +141,7 @@ class Sheets {
             "invite_date" => $data[6],
             "trial_end_date" => $data[7],
             "access_level" => $data[8],
+            "is_responsible" => $data[10] == "TRUE",
             "num" => $num,
         ];
     }
@@ -147,7 +151,7 @@ class Sheets {
         if ($sheetId == -1) {
             return -1;
         }
-        $range = self::$spreadsheet_members_name . "!A2:J";
+        $range = self::$spreadsheet_members_name . "!A2:K";
         $conf = ["valueInputOption" => "USER_ENTERED"];
         $rows = [[
             $info["vk_name"],
@@ -195,6 +199,8 @@ class Sheets {
             $cat["invite_date"],
             $cat["trial_end_date"],
             $cat["access_level"],
+            "",
+            $cat["is_responsible"],
         ];
         $conf = ["valueInputOption" => "USER_ENTERED"];
         $num = $cat["num"] + 2; // +1 потому что отсчёт ключа с 0, +1 потому что отсчёт диапазона с 2 ряда, а не 1

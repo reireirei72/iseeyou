@@ -118,7 +118,7 @@ function send_message($peer_id, $object) {
     $me = intval($object['from_id']);
     $isMom = ($me == PEER_MOM || $peer_id == PEER_MOM);
     $text = $object["text"];
-    if ($text[0] != "/") {
+    if (!$text || $text[0] != "/") {
         return;
     }
     $text = trim(mb_substr(mb_strtolower($text), 1));

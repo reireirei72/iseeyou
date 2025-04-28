@@ -11,11 +11,15 @@ class Fly {
     public static function checkMessage($object) {
         $text = trim($object['text']);
 //        $hasReplies = (!empty($object['fwd_messages']) || !empty($object['reply_message']));
-        if (preg_match('/^(сбор с (ущелья|уступов)|отдельный сбор)/iu', $text)) {
+        if (preg_match('/^(сбор с (ущел|уступов)|отдельный сбор)/iu', $text)) {
             return Fly::sbor($object) ?: "";
-        } elseif (preg_match('/^ун[еёë]с(ла)? (перья|соплеменник(а|ов))/iu', $text)) {
+        } elseif (preg_match('/^ун[еёë]с(ла)? соплеменник(а|ов)/iu', $text)) {
             if (mb_strpos($text, "ë") !== false) return Fly::$hasLatin;
-            return Fly::transport($object) ?: "";
+            return Fly::transportCat($object) ?: "";
+        } elseif (preg_match('/^спустила? перья/iu', $text)) {
+            return Fly::transportFeathers($object) ?: "";
+        } elseif (preg_match('/^охрана перьев/iu', $text)) {
+            return Fly::guardFeathers($object) ?: "";
         }
         return "";
     }
@@ -127,7 +131,7 @@ class Fly {
         $ex_type = mb_strtolower(trim(array_shift($ex)));
         $type = "";
         $num = 0;
-        if (mb_strpos($ex_type, "сбор с ущелья") !== false) {
+        if (mb_strpos($ex_type, "сбор с ущел") !== false) {
             $type = "сбор с ущелья";
         } elseif (mb_strpos($ex_type, "сбор с уступов") !== false) {
             $type = "сбор с уступов";
@@ -137,6 +141,7 @@ class Fly {
             $num = 2;
         }
         if ($type == "") return "";
+        $ex = array_filter($ex, function($v) { return !!trim($v); });
         $count = intval(mb_ereg_replace('\D+', '', ($ex[count($ex) - 1])));
         $hidden = 0;
         if ($num == 1 && $count > 0) {
@@ -168,15 +173,8 @@ class Fly {
         $type = mb_ucfirst($type);
         return "$type засчитан, $cat[preferred_name].\n+" . declination($points, ['балл', 'балла', 'баллов']);
     }
-    private static function transport($object) {
+    private static function transportCat($object) {
         $text = trim($object['text']);
-        if (preg_match('/^ун[её]с(ла)? перья/iu', $text)) {
-            $type = "перьев";
-            $num = 3;
-        } else {
-            $type = "соплеменника";
-            $num = 4;
-        }
         if (count($object["attachments"]) < 1) {
             return "Нет скриншота истории! Перепиши отчёт";
         }
@@ -185,13 +183,59 @@ class Fly {
         $cat = Fly::getCats($object['from_id'])[$object['from_id']] ?? [];
         if (empty($cat)) return Fly::$missingCatMsg;
         $data = [[
-            'num' => $num,
+            'num' => 3,
             'cat' => $cat['id'],
             'date' => Fly::getDate($object),
             'hidden' => $overweight,
             'msg_id' => $object['peer_id'] . "_" . $object['conversation_message_id']
         ]];
         $points = Sheets::write($data);
-        return "Транспортировка $type засчитана, $cat[preferred_name].\n+" . declination($points, ['балл', 'балла', 'баллов']);
+        return "Транспортировка соплеменника засчитана, $cat[preferred_name].\n+" . declination($points, ['балл', 'балла', 'баллов']);
+    }
+    private static function transportFeathers($object) {
+        $text = trim($object['text']);
+        if (count($object["attachments"]) < 1) {
+            return "Нет скриншота истории! Перепиши отчёт";
+        }
+
+        preg_match('/(\d+) круг/iu', $text, $matches);
+        $count = intval($matches[1] ?? "0");
+        $cat = Fly::getCats($object['from_id'])[$object['from_id']] ?? [];
+        if (empty($cat)) return Fly::$missingCatMsg;
+        $data = [[
+            'num' => 4,
+            'cat' => $cat['id'],
+            'date' => Fly::getDate($object),
+            'hidden' => $count,
+            'msg_id' => $object['peer_id'] . "_" . $object['conversation_message_id']
+        ]];
+        $points = Sheets::write($data);
+        return "Спуск перьев засчитан, $cat[preferred_name].\n+" . declination($points, ['балл', 'балла', 'баллов']);
+    }
+    private static function guardFeathers($object) {
+        $text = trim($object['text']);
+        if (count($object["attachments"]) < 2) {
+            return "Нет скриншотов начала и/или конца! Перепиши отчёт";
+        }
+
+        preg_match('/(\d+):(\d+)\s*-\s*(\d+):(\d+)/iu', $text, $matches);
+        $hFrom = intval($matches[1] ?? "0");
+        $mFrom = intval($matches[2] ?? "0");
+        $hTo = intval($matches[3] ?? "0");
+        $mTo = intval($matches[4] ?? "0");
+        $count = $hTo - $hFrom;
+        if ($count < 0) $count += 24;
+        $count = $count * 60 - $mFrom + $mTo;
+        $cat = Fly::getCats($object['from_id'])[$object['from_id']] ?? [];
+        if (empty($cat)) return Fly::$missingCatMsg;
+        $data = [[
+            'num' => 5,
+            'cat' => $cat['id'],
+            'date' => Fly::getDate($object),
+            'hidden' => $count,
+            'msg_id' => $object['peer_id'] . "_" . $object['conversation_message_id']
+        ]];
+        $points = Sheets::write($data);
+        return "Охрана перьев засчитана, $cat[preferred_name].\n+" . declination($points, ['балл', 'балла', 'баллов']);
     }
 }
