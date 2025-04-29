@@ -145,7 +145,7 @@ function manage_notifications($peer_id, $object) {
             if (empty($tags)) {
                 return;
             }
-            $message = join(", ", $tags);
+            $message = "Ухх, надо подкачаться! Не пропустите грушевание!\n" . join(", ", $tags);
 
             api('messages.send', array(
                 'peer_id' => PEER_NOTIFY,
@@ -228,7 +228,12 @@ function manage_notifications($peer_id, $object) {
                     if (empty($tags)) {
                         sendReaction($peer_id, $object["conversation_message_id"], 7);
                     }
-                    $message = join(", ", $tags);
+                    $message = [
+                        "mafia" => "Время сократить численность населения и раскрыть тайны смертей — собирайтесь сыграть в мафию!",
+                        "game" => "Время веселья и смеха — сыграем в одну игру? Или в несколько...",
+                        "train" => "Ухх, надо подкачаться! Не пропустите грушевание!",
+                    ][$realType];
+                    $message .= "\n" . join(", ", $tags);
                 }
             }
         }
