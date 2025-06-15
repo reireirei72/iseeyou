@@ -81,7 +81,7 @@ function api($method, $params) {
     }
     curl_close($curl);
     $response = json_decode($json, true);
-    if (!$response || !isset($response['response'])) {
+    if (!$response) {
         var_dump($json);
         throw new Exception("Invalid response for {$method} request");
     }

@@ -191,7 +191,7 @@ function manage_notifications($peer_id, $object) {
                         "игры" => "game",
                         "грушевание" => "train",
                     ][$type] ?? "";
-                    if ($realType) {
+                    if ($realType && !in_array("$realType=$value", $write)) {
                         $write[] = "$realType=$value";
                     }
                 }
@@ -258,8 +258,10 @@ function manage_group($peer_id, $object) {
     $commands = [
         "check" => "проверить участников",
         "clean" => "чистка",
+        "restore" => "восстановить комментарии",
     ];
-    if (!in_array($text, $commands)) {
+    if (!in_array($text, $commands) &&
+        mb_strpos($text, $commands["restore"]) === false) {
         return;
     }
 
@@ -357,11 +359,13 @@ function manage_group($peer_id, $object) {
     } elseif ($text == $commands["clean"]) {
         $missing = Sheets::getArray([0 => "?"]);
         $missingRows = array_keys($missing);
+        $removedIds = [];
         if (!empty($missingRows)) {
             $missingRows = array_slice($missingRows, 0, 5);
             Sheets::remove($missingRows);
             foreach ($missingRows as $rowNum) {
                 $id = $missing[$rowNum][6];
+                $removedIds[] = $id;
                 try {
                     api('board.deleteComment', array(
                         'group_id' => GROUP_ID,
@@ -372,10 +376,28 @@ function manage_group($peer_id, $object) {
                     print_r($e);
                 }
             }
-            $messageArray[] = "Удалено " . count($missingRows) . " записей!\n(Если остались ещё записи - повторите команду ещё раз)";
+            $messageArray[] = "Удалено " . count($missingRows) . " записей (" . join(", ", $removedIds) . ")!\n(Если остались ещё записи - повторите команду ещё раз)";
         } else {
             $messageArray[] = "Табличка уже чиста от удалённых :о";
         }
+    } elseif (mb_strpos($text, $commands["restore"]) === 0) {
+        $idsStr = mb_substr($text, mb_strlen($commands["restore"]));
+        $ids = explode(" ", $idsStr);
+        $idsActual = [];
+        foreach ($ids as $id) {
+            $id = intval($id);
+            if ($id > 0) {
+                $response = api('board.restoreComment', array(
+                    'group_id' => GROUP_ID,
+                    'topic_id' => PEOPLE_BOARD,
+                    'comment_id' => $id,
+                ));
+                if ($response["response"] == 1) {
+                    $idsActual[] = $id;
+                }
+            }
+        }
+        $messageArray[] = (join(", ", $idsActual) ?: "Никакие комментарии не") . " восстановлены!";
     }
     foreach ($messageArray as $instance) {
         try {

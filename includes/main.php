@@ -200,14 +200,22 @@ class Peck {
                 "Дозор в ПЦ" => "Дозоры в ПЦ",
                 "Дозор на ГБ" => "Дозоры на ГБ",
                 "Дозор на локации с травами" => "Дозоры на локациях с травами",
+                "Чистка ботов КсД" => "Чистка ботов КсД",
+                "Сбор с ОТ" => "Сбор с ОТ",
+                "Наполнение мха" => "Наполнение мха",
+                "Перенос ресурсов" => "Перенос ресурсов",
+                "Перенос с мели" => "Перенос с мели",
+                "Выдача трав" => "Выдача трав",
+                "Выдача костоправа" => "Выдача костоправа",
             ];
             $return = "Стат активности за период " . $from->format('d.m') . "-" . $to->format('d.m') . "\n";
             $return_array = [];
-            $result = DB::q("SELECT id, name, access_level, norm, has_medal FROM cats WHERE norm >= 0 AND norm <= 2");
+            $result = DB::q("SELECT cats.id as 'id', users.id as 'vk_id', name, access_level, norm, has_medal FROM cats LEFT JOIN users ON cats.id=users.cat_id WHERE cats.norm >= 0 AND cats.norm <= 2");
             $data_cats = [];
             while ($row = DB::fetch($result)) {
                 $data_cats[$row["id"]] = [
                     'id' => $row['id'],
+                    'vk_id' => $row['vk_id'],
                     'name' => $row['name'],
                     'level' => $row['access_level'],
                     'norm' => $row['norm'],
@@ -217,6 +225,15 @@ class Peck {
             }
             $data_activ = Sheets::getActivity(0, $from, $to);
             $formatted_cats = [];
+            $topHundredPoints = [];
+            $topBartender = ""; $topBartenderAmt = 0;
+            $topDozHerb = ""; $topDozHerbAmt = 0;
+            $topMossFill = ""; $topMossFillAmt = 0;
+            $topDozHeal = [];
+            $topDozRiver = [];
+            $topMisty = [];
+            $topGiver = [];
+            $topLogistics = [];
             foreach ($data_cats as $id => $data) {
                 $string = "";
                 $debt = 0;
@@ -238,7 +255,7 @@ class Peck {
                         $actual = $stats[$stat]['extra'];
                     }
                     if ($actual < $req) {
-                        $debt += $req - $actual;
+                        $debt += ($req - $actual) * 2.5; // 2.5 баллов для дозоров в ПЦ и на ГБ (todo: придумать, как их вписать отдельно, если разбалловка изменится)
                         $debt_data[] = mb_lcfirst($stat) . ": " . $actual . "/" . $req;
                     }
                 }
@@ -256,25 +273,86 @@ class Peck {
                 }
                 $formatted_cats[$id] = [
                     "string" => $string,
-                    "debt" => $debt,
+                    "debt" => min(10, $debt),
                     "debt_data" => join(", ", $debt_data),
                 ];
+                $catNameWithLink = "id$data[vk_id] ($data[name])";
+
+                foreach ($stats as $stat => $req) {
+                    $actual = $req['extra'];
+                    if ($stat == "Чистка ботов КсД") {
+                        if ($topBartenderAmt < $actual) {
+                            $topBartenderAmt = $actual;
+                            $topBartender = $catNameWithLink;
+                        }
+                        continue;
+                    } elseif ($stat == "Дозор в ПЦ") {
+                        if ($actual >= 5) {
+                            $topDozHeal[] = $catNameWithLink;
+                        }
+                    } elseif ($stat == "Дозор на локации с травами") {
+                        if ($topDozHerbAmt < $actual) {
+                            $topDozHerbAmt = $actual;
+                            $topDozHerb = $catNameWithLink;
+                        }
+                    } elseif ($stat == "Дозор на ГБ") {
+                        if ($actual >= 5) {
+                            $topDozRiver[] = $catNameWithLink;
+                        }
+                    } elseif ($stat == "Сбор с ОТ") {
+                        if ($actual >= 5) {
+                            $topMisty[] = $catNameWithLink;
+                        }
+                    } elseif ($stat == "Выдача трав" || $stat == "Выдача костоправа") {
+                        if ($actual >= 5) {
+                            $topGiver[] = $catNameWithLink;
+                        }
+                    } elseif ($stat == "Перенос ресурсов") {
+                        $points = $req["points"] + ($stats["Перенос с мели"]["points"] ?? 0);
+                        if ($points >= 15) {
+                            $topLogistics[] = $catNameWithLink;
+                        }
+                    } elseif ($stat == "Наполнение мха") {
+                        if ($topMossFillAmt < $actual) {
+                            $topMossFillAmt = $actual;
+                            $topMossFill = $catNameWithLink;
+                        }
+                    }
+                }
+                if ($total_points >= 100) {
+                    $topHundredPoints[] = $catNameWithLink;
+                }
             }
 
             usort($formatted_cats, function($a, $b) { return $b["debt"] - $a["debt"];});
             foreach ($formatted_cats as $id => $data) {
+                $return .= "\n" . $data["string"];
+                if ($data["debt"] > 0) {
+                    $return .= " ($data[debt_data]) - +$data[debt] баллов";
+                }
+            }
+            // Formatting
+            $return_split = explode("\n", $return);
+            $return = "";
+            foreach ($return_split as $line) {
                 if (mb_strlen($return) > 2048 - 250) {
                     $return_array[] = $return;
                     $return = "";
                 } else {
-                    $return .= "\n";
-                }
-                $return .= $data["string"];
-                if ($data["debt"] > 0) {
-                    $return .= " ($data[debt_data])";
+                    $return .= "\n" . $line;
                 }
             }
             $return_array[] = $return;
+            $return_array[] = "Стобалльник недели: " . (join(", ", $topHundredPoints) ?: "-")
+                . "\nДозорный недели:"
+                . "\nГБ: " . (join(", ", $topDozRiver) ?: "-")
+                . "\nПЦ: " . (join(", ", $topDozHeal) ?: "-")
+                . "\nБартендер недели: " . ($topBartender ?: "-")
+                . "\nТуманный страж недели: " . (join(", ", $topMisty) ?: "-")
+                . "\nХранитель трав недели: " . ($topDozHerb ?: "-")
+                . "\nЛучший друг Моховика: " . ($topMossFill ?: "-")
+                . "\nВыдаватель недели: " . (join(", ", $topGiver) ?: "-")
+                . "\nЛогист недели: " . (join(", ", $topLogistics) ?: "-");
             return $return_array;
         }
         return "это не неделя лмао";
@@ -558,9 +636,6 @@ class Peck {
         return "";
     }
     private static function giveMemo($object) {
-        if (!checkAccess($object['from_id'], 100)) {
-            return "";
-        }
         $cat = getCats($object['from_id'])[$object['from_id']] ?? [];
         if (empty($cat)) return "";
         $text = explode("\n", $object["text"]);

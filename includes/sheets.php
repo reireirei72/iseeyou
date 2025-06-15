@@ -345,7 +345,6 @@ class Sheets {
             "data" => $data["data"],
         ];
     }
-
     public static function writeMemo($info) {
         $sheetId = Sheets::getSheetId(self::$spreadsheet_id, self::$memo_spreadsheet_stats_name);
         if ($sheetId == -1) {
