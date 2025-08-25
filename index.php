@@ -82,7 +82,7 @@ function send_message($peer_id, $object) {
     if ($object['date'] + 10 < time()) {
         return;
     }
-    if (!in_array($peer_id, [PEER_MOM, PEER_TEST, PEER_WORK])) {
+    if (!in_array($peer_id, [PEER_MOM, PEER_TEST, PEER_WORK, PEER_HEAD])) {
         return;
     }
     $me = intval($object['from_id']);
@@ -117,7 +117,7 @@ function send_message($peer_id, $object) {
         $command = getCommand($text);
         if ($command == "помощь" && $text == "") {
             $message = "Список команд (напишите \"$bot_name помощь (команда)\" для подробностей):\n"
-                . "> дай (мне / ВК VK_ID / @таг / ID / Имя) (имя / доступ / норму / медаль / разрешение / айди) (текст / число)\n"
+                . "> дай (мне / ВК VK_ID / @таг / ID / Имя) (имя / доступ  / медаль / разрешение / айди / вступление) (текст / число)\n"
                 . "> инфо (Имя / ID / ВК VK_ID / @таг)\n"
                 . "> шаблон(ы)\n"
                 . "> активность (VK_ID / @таг / Имя) (за [период])\n"
@@ -125,7 +125,7 @@ function send_message($peer_id, $object) {
                 . "> добавь (VK_ID / @таг) Имя ID\n"
                 . "> удали (ВК VK_ID / @таг / ID / Имя)\n"
                 . "> дозорные\n"
-                . "> норма (1 / 2 / ИС)\n"
+                . "> норма (ИС)\n"
                 . "> тагни на перенос/не тагай на перенос\n"
                 . "> тагни выдавателей\n"
                 . "> уведомление (вид деятельности) (включить/выключить)\n"
@@ -146,10 +146,8 @@ function send_message($peer_id, $object) {
                     . "> $bot_name дай 1454689 доступ 7\n"
                     . "Меняет доступ. Могут это делать только доверенные и выше и только для тех, у кого доступ ниже,"
                     ." чем у них. Менять себе доступ нельзя.\n\n"
-                    . "> $bot_name дай Омуль норму 2\n"
-                    . "Меняет тип нормы. О типах нормы можно узнать, введя команду \"$bot_name норма (тип)\"\n\n"
-                    . "> $bot_name дай @podlazhishi медаль\n"
-                    . "Выдаёт медаль. Если написать \"-медаль\", медаль снимется.\n\n"
+                    . "> $bot_name дай @podlazhishi дату\n"
+                    . "Меняет дату вступления в отряд. Пишется в формате дд.мм.гггг - 01.01.2025.\n\n"
                     . "> $bot_name дай @podlazhishi разрешение\n"
                     . "Выдаёт разрешение на выдачу трав/костоправов. Если написать \"-разрешение\", разрешение уберётся.\n\n"
                     . "> $bot_name дай @podlazhishi айди 1454689\n"
@@ -194,9 +192,9 @@ function send_message($peer_id, $object) {
                     . "Пример: $bot_name кто дозорит\n"
                     . "Показывает текущих дозорных в Палатке целителей и на Галечном берегу";
             } elseif ($text == "норма") {
-                $message = "> норма (1 / 2 / ИС)\n"
-                    . "Пример: $bot_name норма 1\n"
-                    . "Показывает норму под выбранным вариантом";
+                $message = "> норма (ИС)\n"
+                    . "Пример: $bot_name норма\n"
+                    . "Показывает норму. Если дописать 'ИС', покажет норму для ИС";
             } elseif ($text == "тагни на перенос" || $text == "не тагай") {
                 $message = "> тагни на перенос\n"
                     . "Бот запоминает вас, чтобы тагнуть, когда собирающий перенос отдаст ему эту команду."
@@ -225,33 +223,19 @@ function send_message($peer_id, $object) {
             }
         } elseif ($command == "норма") {
             $text = trim($text);
-            if ($text == "1") {
-                $message = "1 вариант нормы для участника без медали:\n"
-                    . "• 4 часа в ПЦ;\n"
-                    . "• 4 дозора на Гб;\n"
-                    . "• 6 баллов за доп. задания\n\n"
-                    . "1 вариант нормы для участника с медалью:\n"
-                    . "• 3 часа в ПЦ;\n"
-                    . "• 4 дозора на Гб;\n"
-                    . "• 4 балла за доп. задания\n\n"
-                    . "Доп.задания в списке заданий блога с 3 по 16";
-            } elseif ($text == "2") {
-                $message = "2 вариант нормы для участника без медали:\n"
-                    . "• 3 часа в ПЦ;\n"
-                    . "• 2 дозора на Гб;\n"
-                    . "• 15 баллов за доп. задания\n\n"
-                    . "2 вариант нормы для участника с медалью:\n"
-                    . "• 2 часа в ПЦ;\n"
-                    . "• 2 дозора на Гб;\n"
-                    . "• 12 балла за доп. задания\n\n"
-                    . "Доп.задания в списке заданий блога с 3 по 16";
+            if ($text == "") {
+                $message = "За месяц выполнить:\n"
+                    . "• 4 дозора в ПЦ;\n"
+                    . "• 4 дозора на ГБ;\n"
+                    . "• 4 переноса;\n"
+                    . "• 72 балла за любые задания в сумме (те, что выше, считаются в это кол-во баллов)";
             } elseif (mb_strtolower($text) == "ис") {
-                $message = "• 4 часа в ПЦ;\n"
-                    . "• 2 дозора на Гб;\n"
-                    . "• 3 дозора на локациях с травами;\n"
-                    . "• 10 баллов за доп. задания\n\n"
-                    . "Доп.задания в списке заданий блога с 3 по 14, 16\n"
-                    . "3 дозора на локациях с травами НЕ входят в эту часть. От 4 и более — входят.";
+                $message = "За неделю (с момента вступления в отряд) выполнить:\n"
+                    . "• 2 дозора в ПЦ;\n"
+                    . "• 2 дозора на ГБ;\n"
+                    . "• 2 дозора на локациях с травами;\n"
+                    . "• 2 переноса;\n"
+                    . "• 30 баллов за любые задания в сумме (те, что выше, считаются в это кол-во баллов)";
             }
         } elseif ($command == "уведомление") {
             if (empty(trim($text))) {
@@ -374,8 +358,7 @@ function send_message($peer_id, $object) {
             $hour = intval(date('H'));
             $minute = intval(date('i'));
             if (in_array($hour, [11, 15, 16]) && $minute >= 40 && $minute < 55) {
-                $sticker_id = 86521;
-//                sendReaction($peer_id, $object["conversation_message_id"], 8);
+                sendReaction($peer_id, $object["conversation_message_id"], 8);
                 // вк говнина и не любит отправку реакций, либо я говнина и не умею делать апи запросы. короче удачи
             }
             if ($sticker_id == 0 && $command != "" && $command != "за") {
@@ -411,17 +394,14 @@ function send_message($peer_id, $object) {
                     $sticker_id = 83411;
                 } else {
                     $cat_id = DB::getVal("SELECT cat_id FROM users WHERE id=$who", 0);
+                    $cat_info = DB::getRow("SELECT * FROM cats WHERE id=$cat_id");
                     if ($cat_id <= 0) {
                         $sticker_id = 83455;
                     } else {
-                        $period_type = "weekly";
-                        $time_from = new DateTime('last Saturday');
-                        if ($time_from->format('w') == date('w')) {
-                            $time_from->modify('+7 day');
-                        }
+                        $period_type = "monthly";
+                        $time_from = new DateTime('first day of this month 00:00:00');
                         $time_to = clone $time_from;
-                        $time_to->modify('+7 day');
-                        $time_to->modify('-1 second');
+                        $time_to->modify('last day of this month 23:59:59');
                         if ($command == "за") {
                             $command = getCommand($text, true);
                             if (preg_match('/(\d+\.\d+(\.\d*)?)?-(\d+\.\d+(\.\d*)?)?/iu', $command)) {
@@ -438,6 +418,10 @@ function send_message($peer_id, $object) {
                                     $time_to = new DateTime();
                                 }
                             }
+                        } elseif ($cat_info["access_level"] < 1) {
+                            $time_from = DateTime::createFromFormat("Y-m-d H:i:s", $cat_info["join_date"] . " 00:00:00");
+                            $time_to = new DateTime();
+                            $period_type = "probation";
                         }
                         $message = Peck::getActivity($cat_id, $time_from, $time_to, $period_type);
                     }
@@ -447,14 +431,22 @@ function send_message($peer_id, $object) {
             if (!checkAccess($me, "Доверенный")) {
                 $sticker_id = 83411;
             } else {
-                $time_from = new DateTime('last Saturday');
-                $time_from->modify('-7 day');
-                if ($time_from->format('w') == date('w')) {
-                    $time_from->modify('+7 day');
+                $check = trim($text) == "месяц";
+                if ($check) {
+                    $time_from = new DateTime('first day of last month 00:00:00');
+                    $time_to = clone $time_from;
+                    $time_to->modify('first day of next month 00:00:00');
+                    $time_to->modify('-1 second');
+                } else {
+                    $time_from = new DateTime('last Saturday');
+                    $time_from->modify('-7 day');
+                    if ($time_from->format('w') == date('w')) {
+                        $time_from->modify('+7 day');
+                    }
+                    $time_to = clone $time_from;
+                    $time_to->modify('+7 day');
+                    $time_to->modify('-1 second');
                 }
-                $time_to = clone $time_from;
-                $time_to->modify('+7 day');
-                $time_to->modify('-1 second');
 
                 $command = getCommand($text);
                 if ($command == "за") {
@@ -462,7 +454,7 @@ function send_message($peer_id, $object) {
                     getTimePeriodFromString($command, $time_from, $time_to);
                 }
 
-                $message = Peck::getActivityStat($time_from, $time_to);
+                $message = Peck::getActivityStat($time_from, $time_to, $check);
             }
         } elseif ($command == "инфо") {
             $command = getCommand($text);
@@ -470,7 +462,7 @@ function send_message($peer_id, $object) {
             if ($command == "вк") {
                 $i = intval(((preg_match('/^\[id(\d+)\|/ui', $text, $matches)) ? $matches[1] : $text));
                 $who = (($i > 0) ? $i : $who);
-                $info = DB::getRow("SELECT users.id AS 'user_id', cat_id, name, norm, access_level, has_medal, has_permit FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE users.id=$who");
+                $info = DB::getRow("SELECT users.id AS 'user_id', cat_id, name, access_level, has_medal, has_permit FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE users.id=$who");
                 if (is_null($info)) {
                     $sticker_id = 79400;
                 } else {
@@ -490,7 +482,7 @@ function send_message($peer_id, $object) {
                     $cat_id = DB::getVal("SELECT id FROM cats WHERE LOWER(name)='" . DB::escape(mb_strtolower($text)) . "'", -1);
                     $cond = "cat_id=$cat_id";
                 }
-                $info_all = DB::q("SELECT users.id AS 'user_id', bonk_count, cat_id, name, norm, access_level, has_medal, has_permit, maindoz_tag_enabled, gbdoz_tag_enabled, herbdoz_tag_enabled, carryover_tag_enabled FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE $cond");
+                $info_all = DB::q("SELECT users.id AS 'user_id', bonk_count, cat_id, name, access_level, join_date, has_permit, maindoz_tag_enabled, gbdoz_tag_enabled, herbdoz_tag_enabled, carryover_tag_enabled FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE $cond");
                 if (DB::numRows($info_all) < 1) {
                     $sticker_id = 79400;
                     $info = null;
@@ -515,12 +507,11 @@ function send_message($peer_id, $object) {
             if (!is_null($info)) {
                 $level = $info['access_level'];
                 $level_str = array_flip(ACCESS_LEVELS_TYPES)[$level] ?? "???";
-                $norm_type = ["ИС", "1", "2"][$info['norm']] ?? "не выбрана";
-                $bonking_flavor = ["Ударили по голове", "Уронили на пол", "Избили за гаражами", "Забуллили"];
+                $bonking_flavor = ["Ударили по голове", "Забуллили", "Бонкнули"];
                 $bonking_flavor = $bonking_flavor[rand(0, count($bonking_flavor) - 1)];
+                $join_date = DateTime::createFromFormat("Y-m-d H:i:s", $info['join_date'] . " 00:00:00");
                 $message .= "\nДоступ: $info[access_level] ($level_str)"
-                    . "\nВариант нормы: $norm_type"
-                    . "\nМедаль: " . ($info['has_medal'] ? "есть" : "нет")
+                    . "\nВступил в отряд: " . $join_date->format("d.m.Y")
                     . "\nРазрешение: " . ($info['has_permit'] ? "есть" : "нет")
                     . "\nТагать в конце дозора в ПЦ: " . ($info['maindoz_tag_enabled'] ? "да" : "нет")
                     . "\nТагать в конце дозора на ГБ: " . ($info['gbdoz_tag_enabled'] ? "да" : "нет")
@@ -528,18 +519,14 @@ function send_message($peer_id, $object) {
                     . "\nТагать всегда на перенос: " . ($info['carryover_tag_enabled'] ? "да" : "нет")
                     . ($info["bonk_count"] > 0 ? ("\n$bonking_flavor: " . declination($info["bonk_count"], ['раз', 'раза', 'раз'])) : "");
             }
-        } elseif ($command == "список" && in_array(trim($text), ["отряда", "нормы"])) {
-            $text = trim($text);
-            $order_by = ($text == "отряда" ? "access_level" : "norm");
-            $result = DB::q("SELECT users.id AS 'id', cat_id, name, access_level, norm FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE norm >= 0 ORDER BY $order_by DESC, name");
+        } elseif ($command == "список" && trim($text) == "отряда") {
+            $result = DB::q("SELECT users.id AS 'id', cat_id, name, access_level FROM users LEFT JOIN cats ON cats.id=users.cat_id ORDER BY access_level DESC, name");
             $list = [];
-            $order_by_str = ($text == "отряда" ? "уровень доступа" : "вариант нормы");
-            $message = "Список $text (ВК — имя — $order_by_str):\n";
+            $message = "Список отряда (ВК — имя — уровень доступа):\n";
             while ($row = DB::fetch($result)) {
                 $list[$row["id"]] = [
                     "name" => $row["name"],
                     "access_level" => $row["access_level"],
-                    "norm" => $row["norm"],
                 ];
             }
             $ids = array_keys($list);
@@ -548,14 +535,7 @@ function send_message($peer_id, $object) {
                 $list[$user["id"]]["first_name"] = $user["first_name"];
             }
             foreach ($list as $id => $item) {
-                $s = $item[$order_by];
-                if ($text == "нормы") {
-                    if ($s == 0) {
-                        $s = "не выбрано";
-                    } else {
-                        $s .= " вариант";
-                    }
-                }
+                $s = $item["access_level"];
                 $message .= "[id{$id}|$item[first_name]] — $item[name] — $s\n";
             }
             $count = DB::getVal("SELECT COUNT(id) FROM cats");
@@ -694,7 +674,7 @@ function send_message($peer_id, $object) {
                 $self = $who == $me;
             } elseif ($command != "мне") { // Варовские айди или имя
                 $text = trim($command . " " . $text);
-                $types = join("|", ["имя", "айди", "норму", "доступ", "медаль", "-медаль", "разрешение", "-разрешение"]);
+                $types = join("|", ["имя", "айди", "доступ", "дату", "разрешение", "-разрешение"]);
                 preg_match("/([А-ЯЁа-яё][а-яё]+( [А-ЯЁа-яё][а-яё]+)?|\d+)\s+(($types).*)/u", $text, $data);
                 $cat_id = $data[1] ?? "";
                 $text = $data[3] ?? "";
@@ -740,34 +720,39 @@ function send_message($peer_id, $object) {
                         }
                     }
                 }
-            } elseif ($command == "норму") {
+            } elseif ($command == "дату") {
                 if (!$isMom && !$self && !checkAccess($me, "Глава")) {
                     $sticker_id = 83411;
                 } else {
-                    $type = intval($text);
-                    if ($cat_info["norm"] == $type) {
-                        $message = "У этого котика";
-                        if ($self) {
-                            $message = "У вас";
+
+
+                    $parts = explode('.', $text);
+                    if (count($parts) === 3) {
+                        if (strlen($parts[2]) === 2) {
+                            $parts[2] = '20' . $parts[2];
                         }
-                        $message .= " уже норма $type...";
-                    } elseif ($type > 2 || ($type < 1 && !checkAccess($me, "Доверенный"))) {
-                        $message = "Нормы типа '$text' не существует...";
+                        $text = implode('.', $parts);
+                    }
+
+                    $date = DateTime::createFromFormat('d.m.Y', $text);
+
+                    if ($date === false) {
+                        echo "Это чо за дата такая...";
                     } else {
-                        DB::q("UPDATE cats SET norm=$type WHERE id=$cat_id");
-                        if ($type < 1) {
-                            if ($type == 0) {
-                                $type = "ИС";
-                            } else {
-                                $type = "привилегированная";
+                        $formatted = $date->format('Y-m-d');
+                        if ($cat_info["join_date"] == $formatted) {
+                            $message = "У этого котика";
+                            if ($self) {
+                                $message = "У вас";
+                            }
+                            $message .= " уже дата вступления в отряд $formatted...";
+                        } else {
+                            DB::q("UPDATE cats SET join_date='$formatted' WHERE id=$cat_id");
+                            $message = "У $cat_info[name] ($cat_id) теперь дата вступления в отряд $formatted!";
+                            if ($self) {
+                                $message = "Теперь у вас дата вступления в отряд $formatted!";
                             }
                         }
-                        if ($self) {
-                            $message = "Теперь ваш";
-                        } else {
-                            $message = "Теперь у котика $cat_info[name] ($cat_id)";
-                        }
-                        $message .= " вариант нормы — $type!";
                     }
                 }
             } elseif ($command == "доступ") {
@@ -858,6 +843,25 @@ function send_message($peer_id, $object) {
                     } else {
                         DB::q("UPDATE cats SET has_permit=$permit WHERE id=$cat_id");
                         $message = "Котику $cat_info[name] ($cat_id) " . ($permit == 1 ? "выдано" : "снято") . " разрешение.";
+                    }
+                }
+            } elseif ($command == "норму" || $command == "-норму") {
+                if (!$isMom && !$self && !checkAccess($me, "Глава")) {
+                    $sticker_id = 83411;
+                } else {
+                    $has_norm = 1;
+                    if ($command == "-норму") {
+                        $has_norm = 0;
+                    }
+                    if ($cat_info["has_norm"] == $has_norm) {
+                        $message = "У этого котика";
+                        if ($self) {
+                            $message = "У вас";
+                        }
+                        $message .= ($has_norm == 1) ? " уже есть норма..." : " и так нет нормы...";
+                    } else {
+                        DB::q("UPDATE cats SET has_norm=$has_norm WHERE id=$cat_id");
+                        $message = "Котику $cat_info[name] ($cat_id) " . ($has_norm == 1 ? "выдана" : "убрана") . " норма.";
                     }
                 }
             } elseif ($command == "айди") {

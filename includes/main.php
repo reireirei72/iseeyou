@@ -24,7 +24,7 @@ class Peck {
         return intval(DB::getVal("SELECT max_extra_min FROM settings", 0));
     }
 
-    private static function mapCatStats($data, $names, $norm) {
+    private static function mapCatStats($data, $names, $isProbation) {
         $distinct = [ // Считать максимум 1 шт за 1 день
             "Сбор с ОТ" => [],
             "Сбор с МЗ" => [],
@@ -68,15 +68,10 @@ class Peck {
             } else {
                 $result[$key]["extra"]++;
             }
-            if (!in_array($type, ["Дозор в ПЦ", "Дозор на ГБ", "дозор на гб старое"])) {
+            if (!in_array($type, ["Дозор в ПЦ", "Дозор на ГБ", "дозор на гб старое", "Перенос ресурсов", "Перенос с мели"])) {
                 $hasAny = true;
-                if ($norm < 1 && $type == "Дозор на локации с травами" && $herb_doz_count < 3) {
-                    // 0 уровень - ИС, первые 3 дозора на травах не считаются в доп. баллы
-                    $herb_doz_count++;
-                } else {
-                    $extra_points += $points;
-                }
             }
+            $extra_points += $points;
         }
         if (isset($result["дозор на гб старое"])) {
             if (!isset($result["Дозор на ГБ"])) {
@@ -90,25 +85,29 @@ class Peck {
             $result["Дозор на ГБ"]["extra"]  += $result["дозор на гб старое"]["extra"]  * 2;
             unset($result["дозор на гб старое"]);
         }
+        $result["Переносы"]["points"] = ($result["Перенос ресурсов"]["points"] ?? 0) + ($result["Перенос с мели"]["points"] ?? 0);
+        $result["Переносы"]["extra"]  = ($result["Перенос ресурсов"]["extra"] ?? 0)  + ($result["Перенос с мели"]["extra"] ?? 0);
         return [$result, $total_points, $extra_points, $hasAny];
     }
+
     public static function getActivity($who, $from, $to, $period_type) {
-        $period = "текущую неделю";
+        $period = "текущий месяц";
         if ($period_type == "total") {
             $period = "всё время";
-        } elseif ($period_type == "custom") {
+        } elseif ($period_type == "custom" || $period_type == "probation") {
             $period = "период [ " . $from->format('d.m.y') . "-" . $to->format('d.m.y') . " ]";
         } elseif ($period_type == "singleday") {
             $period = $from->format('d.m.y');
         }
         $data = Sheets::getActivity($who, $from, $to);
         $who = intval($who);
-        list($norm, $has_medal, $cat_name) = DB::getRow("SELECT norm, has_medal, name FROM cats WHERE id=$who", [0, 0, "???"]);
-        $norm_type = ["ИС", "1", "2"][$norm] ?? "?";
+        list($access_level, $cat_name) = DB::getRow("SELECT access_level, name FROM cats WHERE id=$who", [0, 0, "???"]);
+        $norm_type = $access_level == 0 ? "ИС" : "обычная";
         $names = [
             "Дозор в ПЦ" => "Дозоры в ПЦ",
             "Дозор на ГБ" => "Дозоры на ГБ",
             "Дозор на локации с травами" => "Дозоры на локациях с травами",
+            "Переносы" => "Участие в переносах в целом",
             "Сбор с ОТ" => "Сборы с ОТ",
             "Сбор с МЗ" => "Сборы с МЗ",
             "Чистка ботов КсД" => "Чистка ботов КсД",
@@ -120,7 +119,7 @@ class Peck {
             "Наполнение мха" => "Наполнение мха",
             "Перебор камней" => "Перебор камней",
             "Перенос ресурсов" => "Участие в переносе в ПсТ",
-            "Перенос с мели" => "Участие в переносе с мели",
+            "Перенос с мели" => "Участие в переносе с ГБ",
             "Обход" => "Обходы номерных",
             "Поручение главы/целителя" => "Поручения",
             "Участие в ЧП" => "Участие в ЧП",
@@ -128,23 +127,26 @@ class Peck {
             "Выдача костоправа" => "Выдача костоправов",
             "Обновление архива памяток" => "Обновление архива памяток",
         ];
-        list($result, $total_points, $extra_points, $hasAny) = Peck::mapCatStats($data, $names, $norm);
+        list($result, $total_points, $extra_points, $hasAny) = Peck::mapCatStats($data, $names, $access_level == 0);
         $return = "Активность котика $cat_name за $period"
             . "\nВариант нормы: $norm_type\n"
             . "\nВсего баллов: $total_points\n";
         $reverse = array_flip($names);
         $normStats = [];
-        if ($from->format('D') == "Sat" && $to->format('D') == "Fri" && $from->diff($to, true)->days == 6) {
-            $normStats = Peck::getNormStats($norm, $has_medal);
+        $endOfMonth = clone $to;
+        $endOfMonth->modify('last day of this month');
+        if ($from->format('j') === "1" && $to->format('Y-m-d') === $endOfMonth->format('Y-m-d') && $from->format('Y-m') === $to->format('Y-m') || $period_type == "probation") {
+            $normStats = Peck::getNormStats($norm_type == "ИС" ? 0 : 1);
         }
+        $isProbation = DB::getVal("SELECT access_level FROM cats WHERE name='" . DB::escape($cat_name) . "'") < 1;
         foreach ($reverse as $name => $key) {
             $now = $result[$key] ?? [
                     "name" => $name,
                     "points" => 0,
                     "extra" => 0,
                 ];
-            if ($now["points"] || in_array($key, ["Дозор в ПЦ", "Дозор на ГБ"]) || $norm < 1 && $key == "Дозор на локации с травами") {
-                if (in_array($key, ["Дозор в ПЦ", "Дозор на ГБ", "Дозор на локации с травами", "Сбор с ОТ",
+            if ($now["points"] || in_array($key, ["Дозор в ПЦ", "Дозор на ГБ", "Переносы"]) || $isProbation && $key == "Дозор на локации с травами") {
+                if (in_array($key, ["Дозор в ПЦ", "Дозор на ГБ", "Переносы", "Дозор на локации с травами", "Сбор с ОТ",
                     "Сбор с МЗ", "Квест на ОС", "Участие в травнике", "Чистка ботов КсД", "Перебор камней"])) {
                     $extra_extra = [
                             "Чистка ботов КсД" => " мусора",
@@ -158,7 +160,7 @@ class Peck {
                 } else {
                     $return .= "\n$name: " . declination($now["points"], ['балл', 'балла', 'баллов']);
                 }
-                if ($key == "Дозор на ГБ") {
+                if ($key == "Переносы") {
                     $return .= "\n\nДополнительные баллы: $extra_points";
                     if (isset($normStats["extra"])) {
                         $return .= "/" . $normStats["extra"];
@@ -172,82 +174,77 @@ class Peck {
         }
         return $return;
     }
-    private static function getNormStats($norm, $has_medal) {
-        $normStats = [
-            "Дозор в ПЦ" => 4,
-            "Дозор на ГБ" => 2,
-            "Дозор на локации с травами" => 3,
-            "extra" => 10,
-        ];
-        if ($norm == 1) {
-            $normStats = [
-                "Дозор в ПЦ" => ($has_medal ? 3 : 4),
-                "Дозор на ГБ" => 4,
-                "extra" => ($has_medal ? 4 : 6),
-            ];
-        } elseif ($norm == 2) {
-            $normStats = [
-                "Дозор в ПЦ" => ($has_medal ? 2 : 3),
+    private static function getNormStats($norm) {
+        return [
+            0 => [
+                "Дозор в ПЦ" => 2,
                 "Дозор на ГБ" => 2,
-                "extra" => ($has_medal ? 12 : 15),
+                "Дозор на локации с травами" => 2,
+                "Переносы" => 2,
+                "extra" => 10,
+                ],
+            1 => [
+                "Дозор в ПЦ" => 4,
+                "Дозор на ГБ" => 4,
+                "Переносы" => 4,
+                "extra" => 72,
+            ]
+        ][$norm];
+    }
+    public static function getActivityStat($from, $to, $check) {
+        // todo: я ебал перепиши это на две разные функции
+        $isMonth = $from->format('j') == 1 && $to->format('j') == $to->format('t') && $to->format('Y-m') === $from->format('Y-m');
+        $isWeek = $from->format('D') == "Sat" && $to->format('D') == "Fri" && $from->diff($to, true)->days == 6;
+        if (!$isMonth && !$isWeek) {
+            return "это не неделя и не месяц тебе норм?";
+        }
+        $names = [
+            "Дозор в ПЦ" => "Дозоры в ПЦ",
+            "Дозор на ГБ" => "Дозоры на ГБ",
+            "Дозор на локации с травами" => "Дозоры на локациях с травами",
+            "Чистка ботов КсД" => "Чистка ботов КсД",
+            "Сбор с ОТ" => "Сбор с ОТ",
+            "Наполнение мха" => "Наполнение мха",
+            "Перенос ресурсов" => "Перенос ресурсов",
+            "Перенос с мели" => "Перенос с мели",
+            "Выдача трав" => "Выдача трав",
+            "Выдача костоправа" => "Выдача костоправа",
+        ];
+        $return = "Стат активности за период " . $from->format('d.m') . "-" . $to->format('d.m') . "\n";
+        $return_array = [];
+        $result = DB::q("SELECT cats.id as 'id', users.id as 'vk_id', name, access_level, has_norm, has_medal FROM cats LEFT JOIN users ON cats.id=users.cat_id WHERE cats.access_level >= 1");
+        $data_cats = [];
+        while ($row = DB::fetch($result)) {
+            if ($isMonth && !$row['has_norm']) continue;
+            $data_cats[$row["id"]] = [
+                'id' => $row['id'],
+                'vk_id' => $row['vk_id'],
+                'name' => $row['name'],
+                'access_level' => $row['access_level'],
+                'stats' => [],
             ];
         }
-        return $normStats;
-    }
-    public static function getActivityStat($from, $to) {
-        if ($from->format('D') == "Sat" && $to->format('D') == "Fri" && $from->diff($to, true)->days == 6) {
-            $names = [
-                "Дозор в ПЦ" => "Дозоры в ПЦ",
-                "Дозор на ГБ" => "Дозоры на ГБ",
-                "Дозор на локации с травами" => "Дозоры на локациях с травами",
-                "Чистка ботов КсД" => "Чистка ботов КсД",
-                "Сбор с ОТ" => "Сбор с ОТ",
-                "Наполнение мха" => "Наполнение мха",
-                "Перенос ресурсов" => "Перенос ресурсов",
-                "Перенос с мели" => "Перенос с мели",
-                "Выдача трав" => "Выдача трав",
-                "Выдача костоправа" => "Выдача костоправа",
-            ];
-            $return = "Стат активности за период " . $from->format('d.m') . "-" . $to->format('d.m') . "\n";
-            $return_array = [];
-            $result = DB::q("SELECT cats.id as 'id', users.id as 'vk_id', name, access_level, norm, has_medal FROM cats LEFT JOIN users ON cats.id=users.cat_id WHERE cats.norm >= 0 AND cats.norm <= 2");
-            $data_cats = [];
-            while ($row = DB::fetch($result)) {
-                $data_cats[$row["id"]] = [
-                    'id' => $row['id'],
-                    'vk_id' => $row['vk_id'],
-                    'name' => $row['name'],
-                    'level' => $row['access_level'],
-                    'norm' => $row['norm'],
-                    'has_medal' => $row['has_medal'] > 0,
-                    'stats' => [],
-                ];
+        $data_activ = Sheets::getActivity(0, $from, $to);
+        $formatted_cats = [];
+        $topHundredPoints = [];
+        $topBartender = ""; $topBartenderAmt = 0;
+        $topDozHerb = ""; $topDozHerbAmt = 0;
+        $topMossFill = ""; $topMossFillAmt = 0;
+        $topDozHeal = [];
+        $topDozRiver = [];
+        $topMisty = [];
+        $topGiver = [];
+        $topLogistics = [];
+        $norm_stats = Peck::getNormStats(1);
+        foreach ($data_cats as $id => $data) {
+            if (!isset($data_activ[$data['id']])) {
+                $data_activ[$data['id']] = [];
             }
-            $data_activ = Sheets::getActivity(0, $from, $to);
-            $formatted_cats = [];
-            $topHundredPoints = [];
-            $topBartender = ""; $topBartenderAmt = 0;
-            $topDozHerb = ""; $topDozHerbAmt = 0;
-            $topMossFill = ""; $topMossFillAmt = 0;
-            $topDozHeal = [];
-            $topDozRiver = [];
-            $topMisty = [];
-            $topGiver = [];
-            $topLogistics = [];
-            foreach ($data_cats as $id => $data) {
-                $string = "";
+            list($stats, $total_points, $extra_points) = Peck::mapCatStats($data_activ[$data['id']], $names, $data['access_level'] == 0);
+            if ($isMonth) {
                 $debt = 0;
                 $debt_data = [];
-                $norm = ["ИС", "1", "2"][$data["norm"]] ?? "?";
-                $string .= "$data[name] - норма $norm";
-                if ($data['has_medal']) {
-                    $string .= " (медаль)";
-                }
-                if (!isset($data_activ[$data['id']])) {
-                    $data_activ[$data['id']] = [];
-                }
-                $norm_stats = Peck::getNormStats($data['norm'], $data['has_medal']);
-                list($stats, $total_points, $extra_points) = Peck::mapCatStats($data_activ[$data['id']], $names, $data['norm']);
+                $string = "$data[name]";
                 foreach ($norm_stats as $stat => $req) {
                     if ($stat == "extra") continue;
                     $actual = 0;
@@ -276,8 +273,10 @@ class Peck {
                     "debt" => min(10, $debt),
                     "debt_data" => join(", ", $debt_data),
                 ];
-                $catNameWithLink = "id$data[vk_id] ($data[name])";
+            }
 
+            if ($isWeek) {
+                $catNameWithLink = "id$data[vk_id] ($data[name])";
                 foreach ($stats as $stat => $req) {
                     $actual = $req['extra'];
                     if ($stat == "Чистка ботов КсД") {
@@ -313,8 +312,8 @@ class Peck {
                             $topLogistics[] = $catNameWithLink;
                         }
                     } elseif ($stat == "Наполнение мха") {
-                        if ($topMossFillAmt < $actual) {
-                            $topMossFillAmt = $actual;
+                        if ($topMossFillAmt < $req["points"]) {
+                            $topMossFillAmt = $req["points"];
                             $topMossFill = $catNameWithLink;
                         }
                     }
@@ -323,7 +322,9 @@ class Peck {
                     $topHundredPoints[] = $catNameWithLink;
                 }
             }
+        }
 
+        if ($isMonth) {
             usort($formatted_cats, function($a, $b) { return $b["debt"] - $a["debt"];});
             foreach ($formatted_cats as $id => $data) {
                 $return .= "\n" . $data["string"];
@@ -343,19 +344,20 @@ class Peck {
                 }
             }
             $return_array[] = $return;
-            $return_array[] = "Стобалльник недели: " . (join(", ", $topHundredPoints) ?: "-")
-                . "\nДозорный недели:"
-                . "\nГБ: " . (join(", ", $topDozRiver) ?: "-")
-                . "\nПЦ: " . (join(", ", $topDozHeal) ?: "-")
-                . "\nБартендер недели: " . ($topBartender ?: "-")
-                . "\nТуманный страж недели: " . (join(", ", $topMisty) ?: "-")
-                . "\nХранитель трав недели: " . ($topDozHerb ?: "-")
-                . "\nЛучший друг Моховика: " . ($topMossFill ?: "-")
-                . "\nВыдаватель недели: " . (join(", ", $topGiver) ?: "-")
-                . "\nЛогист недели: " . (join(", ", $topLogistics) ?: "-");
-            return $return_array;
         }
-        return "это не неделя лмао";
+        if ($isWeek) {
+            $return_array[] = "💂‍♀ Дозорный недели:"
+                . "\nㅤㅤГБ: " . (join(", ", $topDozRiver) ?: "-")
+                . "\nㅤㅤПЦ: " . (join(", ", $topDozHeal) ?: "-")
+                . "\n💯 Стобалльник недели: " . (join(", ", $topHundredPoints) ?: "-")
+                . "\n🍸 Бартендер недели: " . ($topBartender ?: "-")
+                . "\n🌫︎ Туманный страж недели: " . (join(", ", $topMisty) ?: "-")
+                . "\n🌿 Хранитель трав недели: " . ($topDozHerb ?: "-")
+                . "\n🌾 Лучший друг Моховика: " . ($topMossFill ?: "-")
+                . "\n💉 Выдаватель недели: " . (join(", ", $topGiver) ?: "-")
+                . "\n📦 Логист недели: " . (join(", ", $topLogistics) ?: "-");
+        }
+        return $return_array;
     }
     public static function getReply($object) {
         $reply = $object['reply_message'] ?? [];
@@ -502,7 +504,7 @@ class Peck {
                 . "сбор с ОТ / сбор с острова туманов\n"
                 . "сбор с МЗ / сбор с мшистых земель\n"
                 . "перенос\n"
-                . "перенос с мели\n"
+                . "перенос с ГБ\n"
                 . "наполнение мха\n"
                 . "поручение на мышей\n"
                 . "обход\n"
@@ -550,8 +552,8 @@ class Peck {
             return "> Перенос засчитан\n"
                 . "К сообщению должны быть прикреплены сообщения всех участников переноса."
                 . " Доступно только доверенным и выше";
-        } elseif (preg_match('/^перенос с мели$/iu', $type)) {
-            return "> Перенос с мели засчитан\n"
+        } elseif (preg_match('/^перенос с гб$/iu', $type)) {
+            return "> Перенос с ГБ засчитан\n"
                 . "К сообщению должны быть прикреплены сообщения всех участников переноса."
                 . " Доступно только доверенным и выше";
         } elseif (preg_match('/^наполнение мха/iu', $type)) {
@@ -606,7 +608,7 @@ class Peck {
             return Peck::gatherMoss($object) ?: "";
         } elseif (preg_match('/^перенос засчитан/iu', $text) && $hasReplies) {
             return Peck::carryover($object) ?: "";
-        } elseif (preg_match('/^перенос с мели засчитан/iu', $text) && $hasReplies) {
+        } elseif (preg_match('/^перенос с (мели|гб) засчитан/iu', $text) && $hasReplies) {
             return Peck::carryover($object, 1) ?: "";
         } elseif (preg_match('/^выполнила? поручение/iu', $text)) {
             return Peck::taskMouse($object) ?: "";
@@ -1076,7 +1078,7 @@ class Peck {
         $report_date = new DateTime();
         $report_date->setTimestamp($object['date']);
         // type = 0 - обычный перенос
-        // type = 1 - с мели
+        // type = 1 - с гб
         $num = [8, 20][$type] ?? 0;
         if (!$num) return "";
         //1 2 3 4 5 6 cats
@@ -1090,7 +1092,7 @@ class Peck {
                 $points = 8;
             }
         }
-        $str = ["в ПсТ", "с мели"][$type];
+        $str = ["в ПсТ", "с ГБ"][$type];
         foreach ($cats as $cat) {
             $data[] = [
                 'num' => $num,
@@ -1205,11 +1207,11 @@ class Peck {
             'date' => $dozdate,
             'real_date' => $reportdate,
             'extra' => $unique,
-            'hidden' => $info[3],
+            'hidden' => str_replace(",", ".", $info[3]),
             'msg_id' => $object['peer_id'] . "_" . $object['conversation_message_id']
         ]];
         Sheets::write($data);
-        return "Дозор аннулирован";
+        return "Дозор успешно аннулирован";
     }
     private static function dozorReport($object) {
         $ex = explode('.', str_replace([',', "\n"], '.', trim($object['text'])));
