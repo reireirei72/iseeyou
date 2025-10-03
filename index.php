@@ -117,7 +117,7 @@ function send_message($peer_id, $object) {
         $command = getCommand($text);
         if ($command == "помощь" && $text == "") {
             $message = "Список команд (напишите \"$bot_name помощь (команда)\" для подробностей):\n"
-                . "> дай (мне / ВК VK_ID / @таг / ID / Имя) (имя / доступ  / медаль / разрешение / айди / вступление) (текст / число)\n"
+                . "> дай (мне / ВК VK_ID / @таг / ID / Имя) (имя / доступ  / медаль / айди / вступление) (текст / число)\n"
                 . "> инфо (Имя / ID / ВК VK_ID / @таг)\n"
                 . "> шаблон(ы)\n"
                 . "> активность (VK_ID / @таг / Имя) (за [период])\n"
@@ -148,8 +148,6 @@ function send_message($peer_id, $object) {
                     ." чем у них. Менять себе доступ нельзя.\n\n"
                     . "> $bot_name дай @podlazhishi дату\n"
                     . "Меняет дату вступления в отряд. Пишется в формате дд.мм.гггг - 01.01.2025.\n\n"
-                    . "> $bot_name дай @podlazhishi разрешение\n"
-                    . "Выдаёт разрешение на выдачу трав/костоправов. Если написать \"-разрешение\", разрешение уберётся.\n\n"
                     . "> $bot_name дай @podlazhishi айди 1454689\n"
                     . "Меняет варовский ID для персонажа и всех ВК, которые к нему привязаны. Нельзя сменить ID через ВК-тег или ВК ID на такой, который ни за кем не закреплён.";
             } elseif ($text == "инфо") {
@@ -204,7 +202,7 @@ function send_message($peer_id, $object) {
                 $message = "> тагни выдавателей (выдавателя)\n"
                     . "Пример: $bot_name тагни выдавателей\n"
                     . "Пример: $bot_name тагни выдавателя\n"
-                    . "Тагает всех (или одного случайного) выдавателя (кого-то с разрешением), который сейчас в сети.";
+                    . "Тагает всех (или одного случайного) выдавателя (кого-то с доступом выше ИС), который сейчас в сети.";
             } elseif ($text == "уведомление") {
                 $message = "> уведомление (вид деятельности) включить/выключить\n"
                     . "Пример: $bot_name уведомление перенос включить\n"
@@ -316,7 +314,7 @@ function send_message($peer_id, $object) {
             }
         } elseif (preg_match('/^тагни выдавател(ей|я)$/iu', $command . " " . $text)) {
             $isRandom = (($command . " " . $text) == "тагни выдавателя");
-            $result = DB::q("SELECT users.id AS 'id', name FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE has_permit ORDER BY RAND()");
+            $result = DB::q("SELECT users.id AS 'id', name FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE access_level > 0 ORDER BY RAND()");
             $users = [];
             $check = [];
             $hasMe = false;
@@ -462,7 +460,7 @@ function send_message($peer_id, $object) {
             if ($command == "вк") {
                 $i = intval(((preg_match('/^\[id(\d+)\|/ui', $text, $matches)) ? $matches[1] : $text));
                 $who = (($i > 0) ? $i : $who);
-                $info = DB::getRow("SELECT users.id AS 'user_id', cat_id, name, access_level, has_medal, has_permit FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE users.id=$who");
+                $info = DB::getRow("SELECT users.id AS 'user_id', cat_id, name, access_level, has_medal FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE users.id=$who");
                 if (is_null($info)) {
                     $sticker_id = 79400;
                 } else {
@@ -482,7 +480,7 @@ function send_message($peer_id, $object) {
                     $cat_id = DB::getVal("SELECT id FROM cats WHERE LOWER(name)='" . DB::escape(mb_strtolower($text)) . "'", -1);
                     $cond = "cat_id=$cat_id";
                 }
-                $info_all = DB::q("SELECT users.id AS 'user_id', bonk_count, cat_id, name, access_level, join_date, has_permit, maindoz_tag_enabled, gbdoz_tag_enabled, herbdoz_tag_enabled, carryover_tag_enabled FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE $cond");
+                $info_all = DB::q("SELECT users.id AS 'user_id', bonk_count, cat_id, name, access_level, join_date, maindoz_tag_enabled, gbdoz_tag_enabled, herbdoz_tag_enabled, carryover_tag_enabled FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE $cond");
                 if (DB::numRows($info_all) < 1) {
                     $sticker_id = 79400;
                     $info = null;
@@ -512,7 +510,6 @@ function send_message($peer_id, $object) {
                 $join_date = DateTime::createFromFormat("Y-m-d H:i:s", $info['join_date'] . " 00:00:00");
                 $message .= "\nДоступ: $info[access_level] ($level_str)"
                     . "\nВступил в отряд: " . $join_date->format("d.m.Y")
-                    . "\nРазрешение: " . ($info['has_permit'] ? "есть" : "нет")
                     . "\nТагать в конце дозора в ПЦ: " . ($info['maindoz_tag_enabled'] ? "да" : "нет")
                     . "\nТагать в конце дозора на ГБ: " . ($info['gbdoz_tag_enabled'] ? "да" : "нет")
                     . "\nТагать перед дозорами на травах: " . ($info['herbdoz_tag_enabled'] ? "да" : "нет")
@@ -674,7 +671,7 @@ function send_message($peer_id, $object) {
                 $self = $who == $me;
             } elseif ($command != "мне") { // Варовские айди или имя
                 $text = trim($command . " " . $text);
-                $types = join("|", ["имя", "айди", "доступ", "дату", "разрешение", "-разрешение"]);
+                $types = join("|", ["имя", "айди", "доступ", "дату"]);
                 preg_match("/([А-ЯЁа-яё][а-яё]+( [А-ЯЁа-яё][а-яё]+)?|\d+)\s+(($types).*)/u", $text, $data);
                 $cat_id = $data[1] ?? "";
                 $text = $data[3] ?? "";
@@ -824,25 +821,6 @@ function send_message($peer_id, $object) {
                     } else {
                         DB::q("UPDATE cats SET has_medal=$medal WHERE id=$cat_id");
                         $message = "Котику $cat_info[name] ($cat_id) " . ($medal == 1 ? "выдана" : "снята") . " медаль.";
-                    }
-                }
-            } elseif ($command == "разрешение" || $command == "-разрешение") {
-                if (!$isMom && !checkAccess($me, "Глава")) {
-                    $sticker_id = 83411;
-                } else {
-                    $permit = 1;
-                    if ($command == "-разрешение") {
-                        $permit = 0;
-                    }
-                    if ($cat_info["has_permit"] == $permit) {
-                        $message = "У этого котика";
-                        if ($self) {
-                            $message = "У вас";
-                        }
-                        $message .= ($permit == 1) ? " уже есть разрешение..." : " и так нет разрешения...";
-                    } else {
-                        DB::q("UPDATE cats SET has_permit=$permit WHERE id=$cat_id");
-                        $message = "Котику $cat_info[name] ($cat_id) " . ($permit == 1 ? "выдано" : "снято") . " разрешение.";
                     }
                 }
             } elseif ($command == "норму" || $command == "-норму") {

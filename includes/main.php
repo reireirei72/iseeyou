@@ -513,7 +513,9 @@ class Peck {
                 . "выдача костоправов\n"
                 . "чистка от грязи\n"
                 . "квест\n"
-                . "перебор камней"
+                . "перебор камней\n"
+                . "выдача памятки\n"
+                . "помощь при роспуске травника"
                 ;
         }
         if (preg_match('/^дозоры?$/iu', $type)) {
@@ -588,6 +590,10 @@ class Peck {
         } elseif (preg_match('/^перебор камней/iu', $type)) {
             return "> Перебрал(а) камни, (количество) единиц\n"
                 . "К сообщению необходимо прикладывать скриншот";
+        } elseif (preg_match('/^выдача памятки/iu', $type)) {
+            return "> (Имя), с правилами поведения в ПЦ ознакомлен(а)";
+        } elseif (preg_match('/^помощь при роспуске травника/iu', $type)) {
+            return "> Помог(ла) при роспуске травника";
         }
         return "Неизвестный шаблон '$type'";
     }
@@ -600,8 +606,10 @@ class Peck {
             return Peck::dozorNull($object) ?: "";
         } elseif (preg_match('/^забрали/iu', $text) && $hasReplies) {
             return Peck::dozorHerb($object) ?: "";
-        } elseif (preg_match('/^(помог(ла)? травнику|приняла? участие в травнике)/iu', $text)) {
-            return Peck::misc($object) ?: "";
+        } elseif (preg_match('/^помог(ла)? травнику/iu', $text)) {
+            return Peck::patrHelp($object) ?: "";
+        } elseif (preg_match('/^приняла? участие в травнике/iu', $text)) {
+            return Peck::patrParticipation($object) ?: "";
         } elseif (preg_match('/^боты чисты,? \(?\d+\)?/iu', $text)) {
             return Peck::cleanBots($object) ?: "";
         } elseif (preg_match('/^мох (с (от|мз)) в пц ?\(?\d*\)?/iu', $text)) {
@@ -634,6 +642,8 @@ class Peck {
             return Peck::stoneCheck($object) ?: "";
         } elseif (preg_match('/^[А-Яа-яЁё]+( [А-Яа-яЁё]+)? \[\d+],? с правилами поведения в пц ознакомлен/iu', $text)) {
             return Peck::giveMemo($object) ?: "";
+        } elseif (preg_match('/^помог(ла)? при роспуске травника/iu', $text)) {
+            return Peck::patrGathering($object) ?: "";
         }
         return "";
     }
@@ -767,7 +777,7 @@ class Peck {
 
     private static function flowerQuest($object) {
         if (!checkAccess($object['from_id'], "Наблюдатель")) {
-            return "";
+            return "ИСникам недоступен данный вид деятельности";
         }
         $cat = getCats($object['from_id'])[$object['from_id']] ?? [];
         if (empty($cat)) return "";
@@ -785,8 +795,7 @@ class Peck {
         return "Выполнение квеста засчитано, $cat[name].\n+" . declination($points, ['балл', 'балла', 'баллов']);
     }
     private static function heal($object) {
-        $hasPermit = DB::getVal("SELECT has_permit FROM users LEFT JOIN cats ON cats.id=users.cat_id WHERE users.id=$object[from_id]", 0);
-        if (!$hasPermit) {
+        if (!checkAccess($object['from_id'], "ИС")) {
             return "";
         }
         $ex = explode("\n", str_replace([","], "\n", $object['text']));
@@ -810,6 +819,9 @@ class Peck {
             $num = 24;
             $type_s = "Чистка от грязи";
             $count = (intval(preg_replace('/[^\d]/', '', $count)) * -1);
+        }
+        if ($type_s != "Выдача костоправа" && !checkAccess($object['from_id'], "Наблюдатель")) {
+            return "ИСникам недоступен данный вид деятельности";
         }
 
         $cat = getCats($object['from_id'])[$object['from_id']] ?? [];
@@ -1151,27 +1163,47 @@ class Peck {
         return "Чистка ботов засчитана, $cat[name].\n+" . declination($points, ['балл', 'балла', 'баллов']);
 
     }
-    private static function misc($object) {
-        $ex = explode('.', str_replace([',', "\n"], '.', trim($object['text'])));
-        $type = mb_strtolower(trim(array_shift($ex)));
-        $type_s = "Помощь засчитана";
-        $num = 4;
-        if (preg_match('/^принял(а)? участие в травнике/iu', $type)) {
-            $type_s = "Участие в травнике засчитано";
-            $num = 5;
-        }
+    private static function patrHelp($object) {
         $cat = getCats($object['from_id'])[$object['from_id']] ?? [];
         if (empty($cat)) return "";
         $report_date = new DateTime();
         $report_date->setTimestamp($object['date']);
         $data = [[
-            'num' => $num,
+            'num' => 4,
             'cat' => $cat['id'],
             'date' => $report_date,
             'msg_id' => $object['peer_id'] . "_" . $object['conversation_message_id']
         ]];
         $points = Sheets::write($data);
-        return "$type_s, $cat[name].\n+" . declination($points, ['балл', 'балла', 'баллов']);
+        return "Помощь травнику засчитана, $cat[name].\n+" . declination($points, ['балл', 'балла', 'баллов']);
+    }
+    private static function patrParticipation($object) {
+        $cat = getCats($object['from_id'])[$object['from_id']] ?? [];
+        if (empty($cat)) return "";
+        $report_date = new DateTime();
+        $report_date->setTimestamp($object['date']);
+        $data = [[
+            'num' => 5,
+            'cat' => $cat['id'],
+            'date' => $report_date,
+            'msg_id' => $object['peer_id'] . "_" . $object['conversation_message_id']
+        ]];
+        $points = Sheets::write($data);
+        return "Участие в травнике засчитано, $cat[name].\n+" . declination($points, ['балл', 'балла', 'баллов']);
+    }
+    private static function patrGathering($object) {
+        $cat = getCats($object['from_id'])[$object['from_id']] ?? [];
+        if (empty($cat)) return "";
+        $report_date = new DateTime();
+        $report_date->setTimestamp($object['date']);
+        $data = [[
+            'num' => 26,
+            'cat' => $cat['id'],
+            'date' => $report_date,
+            'msg_id' => $object['peer_id'] . "_" . $object['conversation_message_id']
+        ]];
+        $points = Sheets::write($data);
+        return "Помощь при роспуске травнике засчитана, $cat[name].\n+" . declination($points, ['балл', 'балла', 'баллов']);
     }
     private static function dozorNull($object) {
         if (!checkAccess($object['from_id'], "Проверяющий")) {
@@ -1298,8 +1330,11 @@ class Peck {
         $doz_time = ($type == "на ГБ") ? Peck::$gb_doz_min : Peck::$doz_min;
         $db_type = ($type == "на ГБ") ? "gb" : "main";
         DB::q("INSERT INTO doz_active SET user_id=$object[from_id], peer_id=$object[peer_id], msg_id=$object[conversation_message_id], ends_at='$ends_at' + INTERVAL $doz_time MINUTE, type='$db_type'");
+        $end_date = clone $act_date;
+        $end_date->modify("+" . (($type == "на ГБ") ? Peck::$gb_doz_min : Peck::$doz_min) . " minutes");
         return "Дозор $type засчитан, $cat[name]. \n"
             . ($hasCustomTime ? "" : ("Начало дозора: " . $act_date->format('H:i') . "\n"))
+            . ($type == "на ГБ" ? ("Конец дозора: " . $act_date->modify("+" . (Peck::$gb_doz_min) . " minutes")->format('H:i') . "\n") : "")
             . "+" . declination($points, ['балл', 'балла', 'баллов']);
     }
     private static function dozorHerb($object) {

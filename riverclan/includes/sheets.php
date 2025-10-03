@@ -12,6 +12,10 @@ class Sheets {
         return new Google_Service_Sheets($client);
     }
 
+    private static function dateToSerial($date) {
+        return floatval(25569 + (($date->getTimestamp() + 3 * 60 * 60) / 86400));
+    }
+
     private static function getSheetId($table_id, $name, $service = null) {
         if (!isset($service)) {
             $service = Sheets::getService();
@@ -86,6 +90,80 @@ class Sheets {
         } catch (Exception $e) {
             exit("WRITE ERROR ". $e->getMessage());
         }
+    }
+
+    public static function writeExams($info) {
+        $rows_raw = [];
+        foreach ($info as $item) {
+            $values = [
+                "",
+                $item['full_string'],
+                $item['name'],
+                $item['id'],
+                $item['date'],
+                $item['type'],
+            ];
+            $rows_raw[] = $values;
+        }
+        $rows = [];
+        foreach ($rows_raw as $row) {
+            $cells = [];
+            foreach ($row as $key => $cell) {
+                $new_cell = [
+                    "userEnteredValue" => [],
+                    "userEnteredFormat" => []
+                ];
+                $value_type = (gettype($cell) == "integer" || gettype($cell) == "double") ? "numberValue" : "stringValue";
+                if ($cell instanceof DateTime) {
+                    $pattern = "dd.mm.yyyy";
+                    $value_type = "numberValue";
+                    $cell = Sheets::dateToSerial($cell);
+                    $new_cell["userEnteredFormat"]["numberFormat"] = ["type" => "DATE", "pattern" => $pattern];
+                }
+                $new_cell["userEnteredFormat"]["horizontalAlignment"] = (($value_type == "stringValue") ? "LEFT" : "CENTER");
+                $new_cell["userEnteredValue"] = [$value_type => $cell];
+                $cells[] = $new_cell;
+            }
+            $rows[] = ['values' => $cells];
+        }
+        $sheetId = Sheets::getSheetId(SPREADSHEET_EXAM_ID, SPREADSHEET_EXAM_LIST_NAME);
+
+        $requests = [
+            new Google_Service_Sheets_Request([
+                'insertDimension' => [
+                    'range' => [
+                        'sheetId' => $sheetId,
+                        'dimension' => "ROWS",
+                        'startIndex' => '1',
+                        'endIndex' => '' . (count($rows) + 1)
+                    ],
+                    'inheritFromBefore' => true
+                ]
+            ]),
+            new Google_Service_Sheets_Request([
+                'updateCells' => [
+                    'rows' => $rows,
+                    'fields' => '*',
+                    'range' => [
+                        'sheetId' => $sheetId,
+                        'startRowIndex' => 1,
+                        'endRowIndex' => (count($rows) + 1),
+                        'startColumnIndex' => 0
+                    ],
+                ]
+            ])
+        ];
+
+        $request = new Google_Service_Sheets_BatchUpdateSpreadsheetRequest([
+            'requests' => $requests
+        ]);
+
+        try {
+            Sheets::getService()->spreadsheets->batchUpdate(SPREADSHEET_EXAM_ID, $request);
+        } catch (Exception $e) {
+            exit("WRITE ERROR ". $e->getMessage());
+        }
+        return true;
     }
 
     public static function modify($cell_num, $info) {

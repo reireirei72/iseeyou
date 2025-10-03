@@ -42,7 +42,7 @@ class Sheets {
         $legend = [
             0  => ['type' => 'Дозор в ПЦ',                                  'points' => 2.5],
             1  => ['type' => 'Дозор на ГБ',                                 'points' => 2.5],
-            2  => ['type' => 'Аннулирование дозора (Дозор в ПЦ)',           'points' => -floatval($hidden)],
+            2  => ['type' => 'Аннулирование дозора (Дозор в ПЦ)',           'points' => -2.5],
             3  => ['type' => 'Дозор на локации с травами',                  'points' => floatval($hidden)],
             4  => ['type' => 'Помощь травнику',                             'points' => 1],
             5  => ['type' => 'Участие в травнике',                          'points' => 2],
@@ -58,7 +58,7 @@ class Sheets {
             15 => ['type' => 'Выдача костоправа',                           'points' => ($hidden ? 1 : 0)],
             16 => ['type' => 'Выдача трав',                                 'points' => ($hidden ? 1 : 0)],
             17 => ['type' => 'Квест на ОС',                                 'points' => 3],
-            18 => ['type' => 'Аннулирование дозора (Дозор на ГБ)',          'points' => -floatval($hidden)],
+            18 => ['type' => 'Аннулирование дозора (Дозор на ГБ)',          'points' => -2.5],
             19 => ['type' => 'Сбор с МЗ',                                   'points' => 2],
             20 => ['type' => 'Перенос с мели',                              'points' => floatval($extra)],
             21 => ['type' => 'Аннулирование дозора (Дозор на травах)',      'points' => -floatval($hidden)],
@@ -66,6 +66,7 @@ class Sheets {
             23 => ['type' => 'Обновление архива памяток',                   'points' => 2],
             24 => ['type' => 'Чистка от грязи',                             'points' => ($hidden ? 1 : 0)],
             25 => ['type' => 'Перебор камней',                              'points' => ceil(min(5, max(0, ($extra - 5) / 10)))],
+            26 => ['type' => 'Помощь при роспуске травника',                'points' => 2],
         ];
         return $legend[$num] ?? 0;
     }
@@ -211,6 +212,9 @@ class Sheets {
 
         if (!empty($values)) {
             foreach ($values as $row) {
+                if (empty($row)) {
+                    continue;
+                }
                 $name = trim($row[0]);
                 if ($name == $who || $who === 0) {
                     $date = DateTime::createFromFormat('d.m.Y H:i:s', $row[1] . ':00');

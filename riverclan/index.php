@@ -73,6 +73,7 @@ function clean_leaver($object) {
         print_r($e);
     }
 }
+
 function board_event($object, $type) {
     if ($object["topic_id"] != PEOPLE_BOARD || $object["from_id"] < 0) {
         return;
@@ -112,19 +113,20 @@ function board_event($object, $type) {
         }
     }
 }
+
 function send_message($peer_id, $object) {
     if ($object['date'] + 10 < time()) {
         return;
     }
-    $me = intval($object['from_id']);
-    $isMom = ($me == PEER_MOM || $peer_id == PEER_MOM);
+//    $me = intval($object['from_id']);
+//    $isMom = ($me == PEER_MOM || $peer_id == PEER_MOM);
     if ($peer_id == PEER_MANAGEMENT) {
         manage_group($peer_id, $object);
     } elseif ($peer_id == PEER_TRAINING || $peer_id == PEER_NOTIFY) {
         manage_notifications($peer_id, $object);
+    } elseif ($peer_id == PEER_EXAMS) {
+        manage_exams($peer_id, $object);
     }
-
-
 }
 
 function manage_notifications($peer_id, $object) {
@@ -399,17 +401,36 @@ function manage_group($peer_id, $object) {
         }
         $messageArray[] = (join(", ", $idsActual) ?: "Никакие комментарии не") . " восстановлены!";
     }
-    foreach ($messageArray as $instance) {
+    foreach ($messageArray as $key => $instance) {
         try {
             api('messages.send', array(
                 'peer_id' => $peer_id,
                 'message' => $instance,
                 'disable_mentions' => true,
-                'random_id' => "0",
+                'random_id' => "$key",
             ));
         } catch (Exception $e) {
             print_r($instance);
             print_r($e);
+        }
+    }
+}
+
+function manage_exams($peer_id, $object) {
+    $text = $object["text"];
+    $re = '~^\s*(?P<name>.+?)\s*\[(?P<id>\d+)]\s*(?:-|–|—)?\s*сдала?\s+дкви\s*,?\s*\d+\s*/\s*\d+\s*$~ui';
+    if (preg_match($re, $text, $m)) {
+        $data = [[
+            'full_string' => $text,
+            'name' => $m['name'],
+            'id' => (int)$m['id'],
+            'date' => DateTime::createFromFormat('U', $object["date"]),
+            'type' => "полный",
+        ]];
+
+        $response = Sheets::writeExams($data);
+        if ($response) {
+            sendReaction($peer_id, $object["conversation_message_id"], 1);
         }
     }
 }
