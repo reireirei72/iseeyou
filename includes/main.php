@@ -108,6 +108,7 @@ class Peck {
             "Дозор на ГБ" => "Дозоры на ГБ",
             "Дозор на локации с травами" => "Дозоры на локациях с травами",
             "Переносы" => "Участие в переносах в целом",
+            "Пополнение трав на ГБ" => "Пополнение трав на ГБ",
             "Сбор с ОТ" => "Сборы с ОТ",
             "Сбор с МЗ" => "Сборы с МЗ",
             "Чистка ботов КсД" => "Чистка ботов КсД",
@@ -181,7 +182,7 @@ class Peck {
                 "Дозор на ГБ" => 2,
                 "Дозор на локации с травами" => 2,
                 "Переносы" => 2,
-                "extra" => 10,
+                "extra" => 30,
                 ],
             1 => [
                 "Дозор в ПЦ" => 4,
@@ -515,7 +516,8 @@ class Peck {
                 . "квест\n"
                 . "перебор камней\n"
                 . "выдача памятки\n"
-                . "помощь при роспуске травника"
+                . "помощь при роспуске травника\n"
+                . "пополнение трав на ГБ"
                 ;
         }
         if (preg_match('/^дозоры?$/iu', $type)) {
@@ -594,6 +596,8 @@ class Peck {
             return "> (Имя), с правилами поведения в ПЦ ознакомлен(а)";
         } elseif (preg_match('/^помощь при роспуске травника/iu', $type)) {
             return "> Помог(ла) при роспуске травника";
+        } elseif (preg_match('/^пополнение трав на гб/iu', $type)) {
+            return "> Пополнил(а) травы на ГБ";
         }
         return "Неизвестный шаблон '$type'";
     }
@@ -644,8 +648,29 @@ class Peck {
             return Peck::giveMemo($object) ?: "";
         } elseif (preg_match('/^помог(ла)? при роспуске травника/iu', $text)) {
             return Peck::patrGathering($object) ?: "";
+        } elseif (preg_match('/^пополнил(а)? травы на гб/iu', $text)) {
+            return Peck::herbCarry($object) ?: "";
         }
         return "";
+    }
+    private static function herbCarry($object) {
+        $cat = getCats($object['from_id'])[$object['from_id']] ?? [];
+        if (empty($cat)) return "";
+        if (!checkAccess($object['from_id'], "Наблюдатель")) {
+            return "ИСникам недоступен данный вид деятельности";
+        }
+
+        $report_date = new DateTime();
+        $report_date->setTimestamp($object['date']);
+
+        $data = [[
+            'num' => 27,
+            'cat' => $cat["id"],
+            'date' => $report_date,
+            'msg_id' => $object['peer_id'] . "_" . $object['conversation_message_id']
+        ]];
+        $points = Sheets::write($data);
+        return "Пополнение трав на ГБ засчитано, $cat[name].\n+" . declination($points, ['балл', 'балла', 'баллов']);
     }
     private static function giveMemo($object) {
         $cat = getCats($object['from_id'])[$object['from_id']] ?? [];
@@ -776,11 +801,11 @@ class Peck {
     }
 
     private static function flowerQuest($object) {
+        $cat = getCats($object['from_id'])[$object['from_id']] ?? [];
+        if (empty($cat)) return "";
         if (!checkAccess($object['from_id'], "Наблюдатель")) {
             return "ИСникам недоступен данный вид деятельности";
         }
-        $cat = getCats($object['from_id'])[$object['from_id']] ?? [];
-        if (empty($cat)) return "";
 
         $report_date = new DateTime();
         $report_date->setTimestamp($object['date']);

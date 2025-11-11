@@ -169,6 +169,7 @@ function manage_notifications($peer_id, $object) {
                     . "Можно указывать несколько деятельностей через запятую.\n\n"
                     . "Список деятельностей:\n"
                     . "в патрули\n"
+                    . "в детские патрули\n"
                     . "на охоту\n"
                     . "в травники\n"
                     . "на мафию\n"
@@ -183,10 +184,11 @@ function manage_notifications($peer_id, $object) {
                 $write = [];
                 foreach ($types as $type) {
                     $type = trim($type);
-                    preg_match("/^(в|на)\s*([а-яё]+)/iu", $type, $matches);
-                    $type = ($matches[2] ?? "");
+                    preg_match("/^(в|на)\s*([а-яё ]+)/iu", $type, $matches);
+                    $type = trim($matches[2] ?? "");
                     $realType = [
                         "патрули" => "patr",
+                        "детские патрули" => "kit_patr",
                         "охоту" => "hunt",
                         "травники" => "herb",
                         "мафию" => "mafia",
@@ -417,20 +419,32 @@ function manage_group($peer_id, $object) {
 }
 
 function manage_exams($peer_id, $object) {
-    $text = $object["text"];
-    $re = '~^\s*(?P<name>.+?)\s*\[(?P<id>\d+)]\s*(?:-|–|—)?\s*сдала?\s+дкви\s*,?\s*\d+\s*/\s*\d+\s*$~ui';
-    if (preg_match($re, $text, $m)) {
-        $data = [[
-            'full_string' => $text,
-            'name' => $m['name'],
-            'id' => (int)$m['id'],
-            'date' => DateTime::createFromFormat('U', $object["date"]),
-            'type' => "полный",
-        ]];
-
-        $response = Sheets::writeExams($data);
-        if ($response) {
-            sendReaction($peer_id, $object["conversation_message_id"], 1);
+    $texts = $object["text"];
+    $re = '~^\s*(?P<name>.+?)\s*\[(?P<id>\d+)]\s*(?:-|–|—)*\s*сдала?\s+(?P<type>удкви|дкви|ппп)~ui';
+    $texts = explode("\n", $texts);
+    foreach ($texts as $text) {
+        $date = DateTime::createFromFormat('U', $object["date"]);
+        $data = [];
+        if (preg_match($re, $text, $m)) {
+            $type = mb_strtolower($m['type'], 'UTF-8');
+            if ($type === "дкви") {
+                $type .= " (полный)";
+            } elseif ($type === "удкви") {
+                $type = "дкви (упрощённый)";
+            }
+            $data[] = [
+                'full_string' => $text,
+                'name' => $m['name'],
+                'id' => (int)$m['id'],
+                'date' => $date,
+                'type' => $type,
+            ];
+        }
+        if (!empty($data)) {
+            $ok = Sheets::writeExams($data);
+            if ($ok) {
+                sendReaction($peer_id, $object["conversation_message_id"], 1);
+            }
         }
     }
 }
